@@ -1,17 +1,12 @@
-﻿const FREE_MODEL_FALLBACKS = [
-  'gemini-3.1-flash-lite',
-  'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
-  'gemini-3-flash',
-  'gemini-3.5-flash'
-];
+﻿const DEFAULT_OPENAI_MODEL = 'gpt-5-mini';
+const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
+const OPENAI_TIMEOUT_MS = 45000;
 
-const MAX_MODELS_PER_REQUEST = 3;
 const DAILY_LIMITS = {
   guest: 0,
   free: 10
 };
-const MODEL_TIMEOUT_MS = 15000;
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -19,9 +14,27 @@ const CORS_HEADERS = {
   'Access-Control-Max-Age': '86400'
 };
 
+const OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    korean: {
+      type: 'string',
+      description: 'Korean review version for the business owner.'
+    },
+    vietnamese: {
+      type: 'string',
+      description: 'Natural Vietnamese workplace notice for local staff.'
+    }
+  },
+  required: ['korean', 'vietnamese'],
+  additionalProperties: false
+};
+
 export default {
   async fetch(request, env) {
-    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
 
     const url = new URL(request.url);
     if (url.pathname !== '/api/generate') {
@@ -32,20 +45,22 @@ export default {
       return jsonResponse({ message: 'Method not allowed' }, 405);
     }
 
-    if (!env.GEMINI_API_KEY) {
-      return jsonResponse({ message: 'Server configuration is missing.' }, 500);
+    if (!env.OPENAI_API_KEY) {
+      console.error('[VN Boss Worker] OPENAI_API_KEY is missing.');
+      return jsonResponse({ message: '연결 준비가 필요합니다.', userFriendly: true }, 500);
     }
 
     let body;
     try {
       body = await request.json();
     } catch (error) {
-      return jsonResponse({ message: 'Invalid request body.' }, 400);
+      console.error('[VN Boss Worker] Invalid request body:', error);
+      return jsonResponse({ message: '요청 내용을 확인해주세요.', userFriendly: true }, 400);
     }
 
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
     if (!prompt) {
-      return jsonResponse({ message: 'Prompt is required.' }, 400);
+      return jsonResponse({ message: '작성할 내용이 필요합니다.', userFriendly: true }, 400);
     }
 
     const memberState = getMemberState(request);
@@ -61,16 +76,29 @@ export default {
     }
 
     try {
-      const result = await generateWithFallback(prompt, env.GEMINI_API_KEY);
-      await recordDailyQuota(env, memberState, quota);
-      return jsonResponse({ ...result, quota: { ...quota, used: quota.used + 1 } }, 200);
+      const model = getOpenAIModel(env);
+      const result = await generateWithOpenAI(prompt, model, env.OPENAI_API_KEY);
+      await recordDailyQuota(env, quota);
+
+      return jsonResponse({
+        korean: result.korean,
+        vietnamese: result.vietnamese,
+        quota: { ...quota, used: quota.used + 1 }
+      }, 200);
     } catch (error) {
+      console.error('[VN Boss Worker] OpenAI request failed:', error);
       const status = error.publicStatus || 503;
       const message = error.publicMessage || '현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.';
       return jsonResponse({ message, userFriendly: true }, status);
     }
   }
 };
+
+function getOpenAIModel(env) {
+  return typeof env.OPENAI_MODEL === 'string' && env.OPENAI_MODEL.trim()
+    ? env.OPENAI_MODEL.trim()
+    : DEFAULT_OPENAI_MODEL;
+}
 
 function getMemberState(request) {
   const rawType = request.headers.get('X-VN-Boss-Member-State') || 'guest';
@@ -89,177 +117,158 @@ function getQuotaKey(memberState) {
 }
 
 async function checkDailyQuota(env, memberState) {
-  const limit = DAILY_LIMITS[memberState.type] || DAILY_LIMITS.guest;
-  if (!env.USAGE_KV) return { allowed: true, used: 0, limit, key: null, enforced: false };
+  const limit = DAILY_LIMITS[memberState.type] ?? DAILY_LIMITS.guest;
+  if (limit <= 0) {
+    return { allowed: false, used: 0, limit, key: null, enforced: true };
+  }
+
+  if (!env.USAGE_KV) {
+    return { allowed: true, used: 0, limit, key: null, enforced: false };
+  }
 
   const key = getQuotaKey(memberState);
   const current = Number(await env.USAGE_KV.get(key)) || 0;
   return { allowed: current < limit, used: current, limit, key, enforced: true };
 }
 
-async function recordDailyQuota(env, memberState, quota) {
+async function recordDailyQuota(env, quota) {
   if (!env.USAGE_KV || !quota.key) return;
   const nextValue = String((quota.used || 0) + 1);
   await env.USAGE_KV.put(quota.key, nextValue, { expirationTtl: 60 * 60 * 36 });
 }
-async function generateWithFallback(prompt, apiKey) {
-  let lastError = null;
-  const modelsToTry = FREE_MODEL_FALLBACKS.slice(0, MAX_MODELS_PER_REQUEST);
 
-  for (const model of modelsToTry) {
-    try {
-      console.log('[VN Boss Worker] trying model:', model);
-      const result = await callGeminiModel(prompt, model, apiKey);
-      console.log('[VN Boss Worker] model succeeded:', model);
-      return normalizeModelResponse(result);
-    } catch (error) {
-      lastError = error;
-      logModelFailure(model, error);
-      if (shouldStopImmediately(error) || !shouldTryNextModel(error)) throw toPublicError(error);
-
-      if (error.status === 503) {
-        await wait(3000);
-        try {
-          console.log('[VN Boss Worker] retrying model:', model);
-          const retryResult = await callGeminiModel(prompt, model, apiKey);
-          console.log('[VN Boss Worker] model succeeded after retry:', model);
-          return normalizeModelResponse(retryResult);
-        } catch (retryError) {
-          lastError = retryError;
-          logModelFailure(model, retryError);
-          if (shouldStopImmediately(retryError) || !shouldTryNextModel(retryError)) throw toPublicError(retryError);
-        }
-      }
-    }
-  }
-
-  throw toCapacityError(lastError);
-}
-
-async function callGeminiModel(prompt, model, apiKey) {
+async function generateWithOpenAI(prompt, model, apiKey) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort('timeout'), MODEL_TIMEOUT_MS);
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const timeoutId = setTimeout(() => controller.abort('timeout'), OPENAI_TIMEOUT_MS);
 
   const payload = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.35,
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: 'OBJECT',
-        properties: {
-          korean: { type: 'STRING' },
-          vietnamese: { type: 'STRING' }
-        },
-        required: ['korean', 'vietnamese']
+    model,
+    instructions: [
+      'You are VN Boss, an assistant for Korean F&B business owners in Vietnam.',
+      'Return only JSON that matches the required schema.',
+      'Do not include markdown, explanations, comments, or extra keys.',
+      'The Korean text must help the Korean owner review the message.',
+      'The Vietnamese text must sound natural and clear for Vietnamese local staff.'
+    ].join('\n'),
+    input: prompt,
+    max_output_tokens: 1200,
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'vn_boss_notice',
+        strict: true,
+        schema: OUTPUT_SCHEMA
       }
     }
   };
 
+  let response;
+  let responseText = '';
+
   try {
-    const response = await fetch(endpoint, {
+    response = await fetch(OPENAI_RESPONSES_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify(payload),
       signal: controller.signal
     });
 
-    const responseText = await response.text();
-    if (!response.ok) {
-      const error = new Error(`HTTP ${response.status}`);
-      error.status = response.status;
-      error.responseText = responseText;
-      error.model = model;
-      throw error;
-    }
-
-    try {
-      return JSON.parse(responseText);
-    } catch (error) {
-      const parseError = new Error('Model response parse failed.');
-      parseError.status = 502;
-      parseError.responseText = responseText;
-      parseError.model = model;
-      throw parseError;
-    }
+    responseText = await response.text();
   } catch (error) {
     if (error.name === 'AbortError' || error.message === 'timeout') {
-      const timeoutError = new Error('Timeout');
-      timeoutError.status = 'timeout';
-      timeoutError.isTimeout = true;
-      timeoutError.model = model;
-      throw timeoutError;
+      throw publicError('요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.', 504, error);
     }
-    throw error;
+    throw publicError('연결 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', 503, error);
   } finally {
     clearTimeout(timeoutId);
   }
+
+  let data;
+  try {
+    data = responseText ? JSON.parse(responseText) : null;
+  } catch (error) {
+    console.error('[VN Boss Worker] OpenAI response parse failed:', responseText);
+    throw publicError('응답을 읽지 못했습니다. 잠시 후 다시 시도해주세요.', 502, error);
+  }
+
+  if (!response.ok) {
+    console.error('[VN Boss Worker] OpenAI API error:', response.status, data);
+    if (response.status === 400) throw publicError('요청 내용을 확인해주세요.', 400);
+    if (response.status === 401 || response.status === 403) throw publicError('연결 준비가 필요합니다.', 500);
+    if (response.status === 429) throw publicError('현재 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 429);
+    throw publicError('현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 503);
+  }
+
+  if (data?.status === 'incomplete') {
+    console.error('[VN Boss Worker] OpenAI response incomplete:', data?.incomplete_details || data);
+    throw publicError('응답이 너무 길어 완료하지 못했습니다. 내용을 조금 줄여주세요.', 400);
+  }
+
+  if (data?.status === 'failed' || data?.error) {
+    console.error('[VN Boss Worker] OpenAI response failed:', data?.error || data);
+    throw publicError('현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 503);
+  }
+
+  const text = extractOutputText(data);
+  if (!text) {
+    console.error('[VN Boss Worker] OpenAI response missing output text:', data);
+    throw publicError('응답 내용이 비어 있습니다. 잠시 후 다시 시도해주세요.', 502);
+  }
+
+  return parseNoticeJson(text);
 }
 
-function normalizeModelResponse(data) {
-  if (data && typeof data.korean === 'string' && typeof data.vietnamese === 'string') return data;
+function extractOutputText(data) {
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) {
+    return data.output_text.trim();
+  }
 
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  if (!text) throw Object.assign(new Error('Empty model response.'), { status: 502 });
+  const parts = [];
+  for (const item of data?.output || []) {
+    for (const content of item?.content || []) {
+      if (content?.type === 'output_text' && typeof content.text === 'string') {
+        parts.push(content.text);
+      }
+    }
+  }
 
+  return parts.join('\n').trim();
+}
+
+function parseNoticeJson(text) {
+  let parsed;
   try {
-    return JSON.parse(text);
+    parsed = JSON.parse(text);
   } catch (error) {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
-    if (start > -1 && end > start) return JSON.parse(text.slice(start, end + 1));
-    throw Object.assign(new Error('Invalid model response.'), { status: 502 });
-  }
-}
-
-function isResourceExhausted(error) {
-  const text = `${error?.message || ''}\n${error?.responseText || ''}`;
-  return text.includes('RESOURCE_EXHAUSTED');
-}
-
-function shouldTryNextModel(error) {
-  return error?.status === 429 || error?.status === 503 || error?.isTimeout === true || isResourceExhausted(error);
-}
-
-function shouldStopImmediately(error) {
-  if (isResourceExhausted(error)) return false;
-  return error?.status === 400 || error?.status === 401 || error?.status === 403;
-}
-
-function logModelFailure(model, error) {
-  const status = error?.isTimeout ? 'timeout' : error?.status || 'unknown';
-  console.warn('[VN Boss Worker] model failed:', model, 'status:', status);
-}
-
-function toCapacityError(error) {
-  const finalError = new Error('Capacity exceeded.');
-  finalError.cause = error;
-  finalError.publicStatus = 503;
-  finalError.publicMessage = '현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.';
-  return finalError;
-}
-
-function toPublicError(error) {
-  if (error.status === 401 || error.status === 403) {
-    const publicError = new Error('Configuration rejected.');
-    publicError.publicStatus = 500;
-    publicError.publicMessage = '연결 준비가 필요합니다.';
-    return publicError;
+    if (start > -1 && end > start) {
+      parsed = JSON.parse(text.slice(start, end + 1));
+    } else {
+      throw publicError('응답 형식을 읽지 못했습니다. 다시 시도해주세요.', 502, error);
+    }
   }
 
-  if (error.status === 400) {
-    const publicError = new Error('Bad request.');
-    publicError.publicStatus = 400;
-    publicError.publicMessage = '요청 내용을 확인해주세요.';
-    return publicError;
+  if (!parsed || typeof parsed.korean !== 'string' || typeof parsed.vietnamese !== 'string') {
+    console.error('[VN Boss Worker] Invalid structured output:', parsed);
+    throw publicError('응답 형식을 읽지 못했습니다. 다시 시도해주세요.', 502);
   }
 
-  return toCapacityError(error);
+  return {
+    korean: parsed.korean.trim(),
+    vietnamese: parsed.vietnamese.trim()
+  };
 }
 
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function publicError(message, status, cause) {
+  const error = new Error(message);
+  error.publicMessage = message;
+  error.publicStatus = status;
+  if (cause) error.cause = cause;
+  return error;
 }
 
 function jsonResponse(data, status = 200) {
@@ -271,6 +280,3 @@ function jsonResponse(data, status = 200) {
     }
   });
 }
-
-
-

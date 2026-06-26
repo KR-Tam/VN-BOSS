@@ -10,6 +10,11 @@ const loginModal = document.querySelector('#loginModal');
 const modalClose = document.querySelector('#modalClose');
 const modalLoginButton = document.querySelector('#modalLoginButton');
 const historyList = document.querySelector('#historyList');
+const loginModalTitle = document.querySelector('#loginModalTitle');
+const loginModalCopy = loginModal ? loginModal.querySelector('p:not(.eyebrow)') : null;
+let firebaseAuth = null;
+let firebaseProvider = null;
+let authReady = false;
 const targetSelect = document.querySelector('#target');
 const targetCustomWrap = document.querySelector('#targetCustomWrap');
 const targetCustomInput = document.querySelector('#targetCustom');
@@ -60,7 +65,7 @@ function getMemberState() {
     const saved = JSON.parse(localStorage.getItem(MEMBER_STORAGE_KEY) || 'null');
     if (saved && saved.provider === 'google-demo') {
       localStorage.removeItem(MEMBER_STORAGE_KEY);
-    } else if (saved && saved.type === 'free' && saved.userId) {
+    } else if (saved && saved.type === 'free' && saved.userId && saved.provider === 'firebase-google') {
       return saved;
     }
   } catch (error) {}
@@ -116,17 +121,77 @@ function isMember() {
   return getMemberState().type === 'free';
 }
 
+function initFirebaseAuth() {
+  const config = window.VN_BOSS_CONFIG || {};
+  if (!window.firebase || !config.FIREBASE_CONFIG) {
+    authReady = false;
+    return;
+  }
+
+  try {
+    const existingApps = firebase.apps || [];
+    if (!existingApps.length) firebase.initializeApp(config.FIREBASE_CONFIG);
+    firebaseAuth = firebase.auth();
+    firebaseProvider = new firebase.auth.GoogleAuthProvider();
+    firebaseProvider.setCustomParameters({ prompt: 'select_account' });
+    authReady = true;
+
+    firebaseAuth.onAuthStateChanged((user) => {
+      if (!user) {
+        updateMemberUI();
+        return;
+      }
+      saveFirebaseMember(user);
+      updateMemberUI();
+      closeLoginModal();
+    });
+  } catch (error) {
+    authReady = false;
+    console.error('[VN Boss] Firebase init failed:', error);
+  }
+}
+
+function saveFirebaseMember(user) {
+  const member = {
+    type: 'free',
+    userId: user.uid,
+    displayName: user.displayName || user.email || '무료 회원',
+    email: user.email || '',
+    provider: 'firebase-google',
+    joinedAt: new Date().toISOString()
+  };
+  localStorage.setItem(MEMBER_STORAGE_KEY, JSON.stringify(member));
+}
+
+async function signInWithGoogle() {
+  if (!authReady || !firebaseAuth || !firebaseProvider) {
+    openLoginModal(
+      'Google 로그인 설정을 확인해주세요',
+      'Firebase 로그인을 불러오지 못했습니다. 잠시 후 다시 시도하거나 관리자에게 문의해주세요.'
+    );
+    setStatus('Google 로그인 설정을 확인해주세요.', 'warn');
+    return;
+  }
+
+  try {
+    const result = await firebaseAuth.signInWithPopup(firebaseProvider);
+    if (result.user) saveFirebaseMember(result.user);
+    updateMemberUI();
+    closeLoginModal();
+    setStatus('Google 로그인 완료. 무료 회원 기능을 사용할 수 있습니다.');
+  } catch (error) {
+    console.error('[VN Boss] Google sign-in failed:', error);
+    const canceled = error && (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request');
+    setStatus(canceled ? 'Google 로그인이 취소되었습니다.' : 'Google 로그인에 실패했습니다. Firebase 승인 도메인을 확인해주세요.', 'warn');
+  }
+}
 function startGoogleSignup() {
   const config = window.VN_BOSS_CONFIG || {};
   if (config.GOOGLE_AUTH_URL) {
     window.location.href = config.GOOGLE_AUTH_URL;
     return;
   }
-
-  localStorage.removeItem(MEMBER_STORAGE_KEY);
-  updateMemberUI();
-  openLoginModal('Google 회원가입 준비 중입니다');
-  setStatus('아직 Google 로그인 주소가 연결되지 않았습니다. 관리자 설정 후 회원가입을 사용할 수 있습니다.', 'warn');
+  signInWithGoogle();
 }
 
 function requireMember(reason) {
@@ -135,25 +200,29 @@ function requireMember(reason) {
   return false;
 }
 
-function openLoginModal(reason) {
+function openLoginModal(reason, detail) {
   if (!loginModal) return;
   loginModal.classList.add('show');
   loginModal.setAttribute('aria-hidden', 'false');
-  const title = loginModal.querySelector('#loginModalTitle');
-  if (title && reason) title.textContent = reason;
+  if (loginModalTitle && reason) loginModalTitle.textContent = reason;
+  if (loginModalCopy) {
+    loginModalCopy.textContent = detail || 'Google로 시작하면 복사, Zalo 전송, 템플릿 저장, 최근 기록을 바로 사용할 수 있습니다.';
+  }
 }
 
 function closeLoginModal() {
   if (!loginModal) return;
   loginModal.classList.remove('show');
   loginModal.setAttribute('aria-hidden', 'true');
+  if (loginModalTitle) loginModalTitle.textContent = '결과 활용은 로그인 후 가능합니다';
+  if (loginModalCopy) loginModalCopy.textContent = 'Google로 시작하면 복사, Zalo 전송, 템플릿 저장, 최근 기록을 바로 사용할 수 있습니다.';
 }
 
 function updateMemberUI() {
   const member = getMemberState();
   const used = getCurrentUsageCount();
   const limit = getCurrentLimit();
-  if (memberPill) memberPill.textContent = member.type === 'free' ? '무료 회원' : '비회원';
+  if (memberPill) memberPill.textContent = member.type === 'free' ? '무료 회원 · ' + (member.displayName || 'Google') : '비회원';
   if (authButton) authButton.textContent = member.type === 'free' ? '회원 활성화됨' : 'Google로 시작';
   if (authButton) authButton.disabled = member.type === 'free';
   if (usageBox) {
@@ -539,6 +608,7 @@ function copyText(button, text) {
   });
 }
 
+initFirebaseAuth();
 updateMemberUI();
 if (deadlineDate) deadlineDate.value = todayString();
 if (deadlineTime) deadlineTime.value = '18:00';
@@ -585,6 +655,8 @@ window.VNBossPromptBuilder = {
   callGemini,
   requestGeminiWithModelFallback
 };
+
+
 
 
 

@@ -106,7 +106,6 @@ async function handleRequest(request, env) {
       return jsonResponse({ message, userFriendly: true, code: error.publicCode || 'AI_REQUEST_FAILED' }, status);
     }
   }
-}
 
 function getOpenAIModel(env) {
   return typeof env.OPENAI_MODEL === 'string' && env.OPENAI_MODEL.trim()

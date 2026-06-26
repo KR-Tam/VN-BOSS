@@ -3,6 +3,13 @@ const koreanResult = document.querySelector('#koreanResult');
 const vietnameseResult = document.querySelector('#vietnameseResult');
 const statusBox = document.querySelector('#statusBox');
 const generateButton = document.querySelector('#generateButton');
+const usageBox = document.querySelector('#usageBox');
+const memberPill = document.querySelector('#memberPill');
+const authButton = document.querySelector('#authButton');
+const loginModal = document.querySelector('#loginModal');
+const modalClose = document.querySelector('#modalClose');
+const modalLoginButton = document.querySelector('#modalLoginButton');
+const historyList = document.querySelector('#historyList');
 const targetSelect = document.querySelector('#target');
 const targetCustomWrap = document.querySelector('#targetCustomWrap');
 const targetCustomInput = document.querySelector('#targetCustom');
@@ -11,6 +18,15 @@ const deadlineFields = document.querySelector('#deadlineFields');
 const deadlineDate = document.querySelector('#deadlineDate');
 const deadlineTime = document.querySelector('#deadlineTime');
 let messageRequestInProgress = false;
+
+const MEMBERSHIP_LIMITS = {
+  guest: 0,
+  free: 10
+};
+const MEMBER_STORAGE_KEY = 'vnBossMemberState';
+const USAGE_STORAGE_KEY = 'vnBossDailyUsage';
+const HISTORY_STORAGE_KEY = 'vnBossHistory';
+const TEMPLATE_STORAGE_KEY = 'vnBossTemplates';
 
 const REQUEST_TIMEOUT_MS = 60000;
 
@@ -37,6 +53,118 @@ function pad(value) {
 function todayString() {
   const today = new Date();
   return `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+}
+
+function getMemberState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MEMBER_STORAGE_KEY) || 'null');
+    if (saved && saved.type === 'free' && saved.userId) return saved;
+  } catch (error) {}
+  return { type: 'guest', userId: getGuestId(), displayName: '비회원' };
+}
+
+function getGuestId() {
+  const key = 'vnBossGuestId';
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = `guest-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+function getDailyUsage() {
+  const today = todayString();
+  try {
+    const usage = JSON.parse(localStorage.getItem(USAGE_STORAGE_KEY) || 'null');
+    if (usage && usage.date === today) return usage;
+  } catch (error) {}
+  return { date: today, guest: 0, free: 0 };
+}
+
+function saveDailyUsage(usage) {
+  localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(usage));
+}
+
+function getCurrentLimit() {
+  return MEMBERSHIP_LIMITS[getMemberState().type] || MEMBERSHIP_LIMITS.guest;
+}
+
+function getCurrentUsageCount() {
+  const member = getMemberState();
+  const usage = getDailyUsage();
+  return usage[member.type] || 0;
+}
+
+function canUseAiPreview() {
+  return getCurrentUsageCount() < getCurrentLimit();
+}
+
+function recordAiUsage() {
+  const member = getMemberState();
+  const usage = getDailyUsage();
+  usage[member.type] = (usage[member.type] || 0) + 1;
+  saveDailyUsage(usage);
+  updateMemberUI();
+}
+
+function isMember() {
+  return getMemberState().type === 'free';
+}
+
+function startGoogleSignup() {
+  const config = window.VN_BOSS_CONFIG || {};
+  if (config.GOOGLE_AUTH_URL) {
+    window.location.href = config.GOOGLE_AUTH_URL;
+    return;
+  }
+
+  const member = {
+    type: 'free',
+    userId: `free-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`,
+    displayName: '무료 회원',
+    provider: 'google-demo',
+    joinedAt: new Date().toISOString()
+  };
+  localStorage.setItem(MEMBER_STORAGE_KEY, JSON.stringify(member));
+  closeLoginModal();
+  updateMemberUI();
+  setStatus('무료 회원 모드가 활성화되었습니다. Google OAuth URL을 연결하면 실제 Google 가입으로 전환됩니다.');
+}
+
+function requireMember(reason) {
+  if (isMember()) return true;
+  openLoginModal(reason);
+  return false;
+}
+
+function openLoginModal(reason) {
+  if (!loginModal) return;
+  loginModal.classList.add('show');
+  loginModal.setAttribute('aria-hidden', 'false');
+  const title = loginModal.querySelector('#loginModalTitle');
+  if (title && reason) title.textContent = reason;
+}
+
+function closeLoginModal() {
+  if (!loginModal) return;
+  loginModal.classList.remove('show');
+  loginModal.setAttribute('aria-hidden', 'true');
+}
+
+function updateMemberUI() {
+  const member = getMemberState();
+  const used = getCurrentUsageCount();
+  const limit = getCurrentLimit();
+  if (memberPill) memberPill.textContent = member.type === 'free' ? '무료 회원' : '비회원';
+  if (authButton) authButton.textContent = member.type === 'free' ? '회원 활성화됨' : 'Google로 시작';
+  if (authButton) authButton.disabled = member.type === 'free';
+  if (usageBox) {
+    usageBox.textContent = member.type === 'free'
+      ? `무료 회원 AI 사용량: ${used}/${limit}회`
+      : `비회원은 폼 작성만 체험할 수 있습니다 · AI 생성, 복사, Zalo 전송, 저장은 로그인 후 가능합니다.`;
+  }
+  renderHistory();
 }
 
 function formatKoreanDeadline(dateValue, timeValue) {
@@ -224,7 +352,11 @@ async function callGemini(prompt, options = {}) {
   try {
     const response = await fetch(status.endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-VN-Boss-Member-State': getMemberState().type,
+        'X-VN-Boss-User-Id': getMemberState().userId
+      },
       body: JSON.stringify({ prompt }),
       signal: controller.signal
     });
@@ -269,6 +401,18 @@ async function handleGenerate(event) {
   const input = getNoticeInputs();
   const prompt = buildNoticePrompt(input);
 
+  if (!canUseAiPreview()) {
+    const member = getMemberState();
+    if (member.type === 'guest') {
+      openLoginModal('AI 메시지 작성은 로그인 후 가능합니다');
+      setStatus('API 보호를 위해 비회원 AI 작성은 제공하지 않습니다. 무료 회원은 하루 10회까지 사용할 수 있습니다.', 'warn');
+    } else {
+      setStatus('오늘의 무료 회원 AI 사용량을 모두 사용했습니다. 내일 다시 이용해주세요.', 'warn');
+    }
+    messageRequestInProgress = false;
+    return;
+  }
+
   setLoading(true);
   setStatus('잠시만 기다려주세요.');
   koreanResult.textContent = '잠시만 기다려주세요.';
@@ -295,6 +439,7 @@ async function handleGenerate(event) {
     }
 
     renderResult(parsed);
+    recordAiUsage();
     setStatus('메시지가 작성되었습니다.');
   } catch (error) {
     const errorMessage = error.userFriendly ? error.message : formatConnectionError(error);
@@ -309,7 +454,80 @@ async function handleGenerate(event) {
   }
 }
 
+function getResultText(sourceId) {
+  const element = document.querySelector(`#${sourceId}`);
+  if (!element || element.classList.contains('empty')) return '';
+  return element.textContent.trim();
+}
+
+function getSavedList(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(value) ? value : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function saveListItem(key, item, maxItems = 8) {
+  const list = getSavedList(key);
+  list.unshift(item);
+  localStorage.setItem(key, JSON.stringify(list.slice(0, maxItems)));
+}
+
+function saveCurrentResult() {
+  if (!requireMember('최근 생성 기록 저장은 로그인 후 가능합니다')) return;
+  const korean = getResultText('koreanResult');
+  const vietnamese = getResultText('vietnameseResult');
+  if (!korean || !vietnamese) {
+    setStatus('저장할 메시지가 없습니다.', 'warn');
+    return;
+  }
+  saveListItem(HISTORY_STORAGE_KEY, { korean, vietnamese, savedAt: new Date().toISOString() });
+  renderHistory();
+  setStatus('최근 생성 기록에 저장되었습니다.');
+}
+
+function saveTemplate() {
+  if (!requireMember('자주 쓰는 지시문 저장은 로그인 후 가능합니다')) return;
+  const input = normalizeNoticeInputs(getNoticeInputs());
+  saveListItem(TEMPLATE_STORAGE_KEY, { input, savedAt: new Date().toISOString() });
+  setStatus('자주 쓰는 템플릿으로 저장되었습니다.');
+}
+
+function renderHistory() {
+  if (!historyList) return;
+  if (!isMember()) {
+    historyList.textContent = '로그인하면 최근 생성 기록을 저장하고 다시 확인할 수 있습니다.';
+    return;
+  }
+  const history = getSavedList(HISTORY_STORAGE_KEY);
+  if (!history.length) {
+    historyList.textContent = '아직 저장된 생성 기록이 없습니다.';
+    return;
+  }
+  historyList.innerHTML = history.map((item) => {
+    const date = new Date(item.savedAt).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return `<button type="button" class="history-item" data-history-id="${item.savedAt}"><strong>${date}</strong><span>${item.vietnamese.slice(0, 80)}</span></button>`;
+  }).join('');
+}
+
+function openZaloShare(sourceId) {
+  if (!requireMember('Zalo 전송은 로그인 후 가능합니다')) return;
+  const text = getResultText(sourceId);
+  if (!text) {
+    setStatus('전송할 메시지가 없습니다.', 'warn');
+    return;
+  }
+  window.open(`https://zalo.me/share?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+}
+
 function copyText(button, text) {
+  if (!requireMember('복사 기능은 로그인 후 가능합니다')) return;
+  if (!text) {
+    setStatus('복사할 메시지가 없습니다.', 'warn');
+    return;
+  }
   const original = button.textContent;
   navigator.clipboard.writeText(text).then(() => {
     button.textContent = '복사 완료';
@@ -324,6 +542,7 @@ function copyText(button, text) {
   });
 }
 
+updateMemberUI();
 if (deadlineDate) deadlineDate.value = todayString();
 if (deadlineTime) deadlineTime.value = '18:00';
 updateDeadlineVisibility();
@@ -334,9 +553,32 @@ form.addEventListener('submit', handleGenerate);
 
 document.querySelectorAll('[data-copy]').forEach((button) => {
   button.addEventListener('click', () => {
-    const text = document.querySelector(`#${button.dataset.copy}`).textContent;
+    const text = getResultText(button.dataset.copy);
     copyText(button, text);
   });
+});
+
+document.querySelectorAll('[data-action]').forEach((button) => {
+  button.addEventListener('click', () => {
+    if (button.dataset.action === 'zalo') openZaloShare(button.dataset.source);
+    if (button.dataset.action === 'save-result') saveCurrentResult();
+    if (button.dataset.action === 'save-template') saveTemplate();
+  });
+});
+
+if (authButton) authButton.addEventListener('click', startGoogleSignup);
+if (modalLoginButton) modalLoginButton.addEventListener('click', startGoogleSignup);
+if (modalClose) modalClose.addEventListener('click', closeLoginModal);
+if (loginModal) loginModal.addEventListener('click', (event) => {
+  if (event.target === loginModal) closeLoginModal();
+});
+if (historyList) historyList.addEventListener('click', (event) => {
+  const itemButton = event.target.closest('[data-history-id]');
+  if (!itemButton) return;
+  const item = getSavedList(HISTORY_STORAGE_KEY).find((entry) => entry.savedAt === itemButton.dataset.historyId);
+  if (!item) return;
+  renderResult({ korean: item.korean, vietnamese: item.vietnamese });
+  setStatus('저장된 기록을 불러왔습니다.');
 });
 
 window.VNBossPromptBuilder = {
@@ -346,6 +588,9 @@ window.VNBossPromptBuilder = {
   callGemini,
   requestGeminiWithModelFallback
 };
+
+
+
 
 
 

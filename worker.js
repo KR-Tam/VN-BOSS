@@ -7,11 +7,15 @@
 ];
 
 const MAX_MODELS_PER_REQUEST = 3;
+const DAILY_LIMITS = {
+  guest: 0,
+  free: 10
+};
 const MODEL_TIMEOUT_MS = 15000;
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-VN-Boss-Member-State, X-VN-Boss-User-Id',
   'Access-Control-Max-Age': '86400'
 };
 
@@ -44,9 +48,22 @@ export default {
       return jsonResponse({ message: 'Prompt is required.' }, 400);
     }
 
+    const memberState = getMemberState(request);
+    const quota = await checkDailyQuota(env, memberState);
+    if (!quota.allowed) {
+      return jsonResponse({
+        message: memberState.type === 'guest'
+          ? 'API 보호를 위해 비회원 AI 작성은 제공하지 않습니다. 무료 회원으로 시작하면 하루 10회까지 사용할 수 있습니다.'
+          : '오늘의 무료 회원 AI 사용량을 모두 사용했습니다. 내일 다시 이용해주세요.',
+        userFriendly: true,
+        quota
+      }, 429);
+    }
+
     try {
       const result = await generateWithFallback(prompt, env.GEMINI_API_KEY);
-      return jsonResponse(result, 200);
+      await recordDailyQuota(env, memberState, quota);
+      return jsonResponse({ ...result, quota: { ...quota, used: quota.used + 1 } }, 200);
     } catch (error) {
       const status = error.publicStatus || 503;
       const message = error.publicMessage || '현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.';
@@ -55,6 +72,36 @@ export default {
   }
 };
 
+function getMemberState(request) {
+  const rawType = request.headers.get('X-VN-Boss-Member-State') || 'guest';
+  const type = rawType === 'free' ? 'free' : 'guest';
+  const rawUserId = request.headers.get('X-VN-Boss-User-Id') || '';
+  const userId = rawUserId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80) || 'anonymous';
+  return { type, userId };
+}
+
+function getQuotaDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getQuotaKey(memberState) {
+  return `usage:${getQuotaDate()}:${memberState.type}:${memberState.userId}`;
+}
+
+async function checkDailyQuota(env, memberState) {
+  const limit = DAILY_LIMITS[memberState.type] || DAILY_LIMITS.guest;
+  if (!env.USAGE_KV) return { allowed: true, used: 0, limit, key: null, enforced: false };
+
+  const key = getQuotaKey(memberState);
+  const current = Number(await env.USAGE_KV.get(key)) || 0;
+  return { allowed: current < limit, used: current, limit, key, enforced: true };
+}
+
+async function recordDailyQuota(env, memberState, quota) {
+  if (!env.USAGE_KV || !quota.key) return;
+  const nextValue = String((quota.used || 0) + 1);
+  await env.USAGE_KV.put(quota.key, nextValue, { expirationTtl: 60 * 60 * 36 });
+}
 async function generateWithFallback(prompt, apiKey) {
   let lastError = null;
   const modelsToTry = FREE_MODEL_FALLBACKS.slice(0, MAX_MODELS_PER_REQUEST);
@@ -224,3 +271,6 @@ function jsonResponse(data, status = 200) {
     }
   });
 }
+
+
+

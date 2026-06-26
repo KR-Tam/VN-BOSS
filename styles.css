@@ -124,3 +124,44 @@ pre{min-height:168px;margin:0;padding:16px;white-space:pre-wrap;word-break:keep-
 .target-custom{display:none}
 label span em{font-style:normal;color:var(--muted);font-weight:700}
 
+
+.auth-actions{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.member-pill{display:inline-flex;min-height:34px;align-items:center;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font-size:13px;font-weight:800}
+.auth-button,.google-button{border:0;border-radius:8px;background:var(--ink);color:#fff;font-weight:800;cursor:pointer;transition:opacity .2s ease,background .2s ease}
+.auth-button{min-height:38px;padding:0 12px;font-size:14px}
+.auth-button:disabled{background:var(--accent);opacity:1}
+.usage-box{display:block;margin:14px 0 20px;padding:12px 13px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font-size:15px;font-weight:800}
+.result-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.member-history-card{grid-column:1/-1}
+.history-list{min-height:96px;padding:16px;color:var(--muted);font-size:15px}
+.history-item{width:100%;display:grid;gap:4px;text-align:left;border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px;margin:0 0 10px;color:var(--ink);cursor:pointer}
+.history-item strong{font-size:13px;color:var(--accent)}
+.history-item span{display:block;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member-benefits{padding:44px 0;background:var(--bg);border-top:1px solid var(--line)}
+.benefit-grid{width:min(1200px,calc(100% - 32px));margin:0 auto;display:grid;grid-template-columns:1fr;gap:16px}
+.benefit-grid article{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:20px;box-shadow:none}
+.benefit-grid h3{margin:0 0 8px;font-size:19px}
+.benefit-grid p{margin:0;color:var(--muted)}
+.modal-backdrop{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(23,33,29,.48)}
+.modal-backdrop.show{display:flex}
+.login-modal{position:relative;width:min(430px,100%);border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:var(--shadow);padding:24px}
+.login-modal h2{margin:0 0 10px;font-size:25px;line-height:1.2;letter-spacing:0}
+.login-modal p:not(.eyebrow){margin:0 0 18px;color:var(--muted)}
+.modal-close{position:absolute;top:10px;right:10px;width:38px;height:38px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--muted);font-size:26px;line-height:1;cursor:pointer}
+.google-button{width:100%;min-height:50px;padding:0 16px;font-size:16px;background:var(--accent)}
+.google-button:hover{background:var(--accent-dark)}
+
+@media(max-width:760px){
+  .nav{flex-wrap:wrap;padding:10px 0}
+  .nav-links{order:3;width:100%;justify-content:space-between}
+  .auth-actions{margin-left:auto}
+  .auth-button{padding:0 10px;font-size:13px}
+  .member-pill{font-size:12px}
+  .result-head{align-items:flex-start;flex-direction:column}
+  .result-actions{width:100%;justify-content:flex-start}
+  .copy-button{min-width:86px}
+}
+
+@media(min-width:700px){
+  .benefit-grid{grid-template-columns:repeat(3,1fr)}
+}

@@ -10,7 +10,11 @@
   <header class="site-header">
     <nav class="nav">
       <a class="brand" href="#home"><span class="brand-mark">VN</span><span>VN Boss</span></a>
-      <div class="nav-links"><a href="#home">홈</a><a href="#workspace">메시지 작성</a></div>
+      <div class="nav-links"><a href="#home">홈</a><a href="#workspace">메시지 작성</a><a href="#memberBenefits">회원 혜택</a></div>
+      <div class="auth-actions">
+        <span class="member-pill" id="memberPill">비회원</span>
+        <button class="auth-button" id="authButton" type="button">Google로 시작</button>
+      </div>
     </nav>
   </header>
 
@@ -43,6 +47,7 @@
         <p class="eyebrow">메시지 작성</p>
         <h2>메시지 작성</h2>
         <p class="desc">“BOSS”가 “직원”에게 전달할 내용을 작성합니다.</p>
+        <div class="usage-box" id="usageBox"></div>
       </div>
 
       <div class="composer-layout single-composer">
@@ -62,18 +67,68 @@
         </form>
 
         <div class="right-col">
-          <article class="result-card"><div class="result-head"><h3>베트남어 공지문</h3><button class="copy-button" type="button" data-copy="vietnameseResult">복사하기</button></div><pre class="empty" id="vietnameseResult">메시지 작성 버튼을 누르면 베트남어 공지문이 표시됩니다.</pre></article>
-          <article class="result-card"><div class="result-head"><h3>한국어 정리본</h3><button class="copy-button" type="button" data-copy="koreanResult">복사하기</button></div><pre class="empty" id="koreanResult">메시지 작성 버튼을 누르면 한국어 정리본이 표시됩니다.</pre></article>
+          <article class="result-card">
+            <div class="result-head">
+              <h3>베트남어 공지문</h3>
+              <div class="result-actions">
+                <button class="copy-button" type="button" data-action="zalo" data-source="vietnameseResult">Zalo 전송</button>
+                <button class="copy-button" type="button" data-copy="vietnameseResult">복사하기</button>
+              </div>
+            </div>
+            <pre class="empty" id="vietnameseResult">메시지 작성 버튼을 누르면 베트남어 공지문이 표시됩니다.</pre>
+          </article>
+          <article class="result-card">
+            <div class="result-head">
+              <h3>한국어 정리본</h3>
+              <div class="result-actions">
+                <button class="copy-button" type="button" data-action="save-template">템플릿 저장</button>
+                <button class="copy-button" type="button" data-copy="koreanResult">복사하기</button>
+              </div>
+            </div>
+            <pre class="empty" id="koreanResult">메시지 작성 버튼을 누르면 한국어 정리본이 표시됩니다.</pre>
+          </article>
+          <article class="result-card member-history-card">
+            <div class="result-head">
+              <h3>최근 생성 기록</h3>
+              <button class="copy-button" type="button" data-action="save-result">기록 저장</button>
+            </div>
+            <div class="history-list" id="historyList">로그인하면 최근 생성 기록을 저장하고 다시 확인할 수 있습니다.</div>
+          </article>
         </div>
       </div>
     </section>
+
+    <section class="member-benefits" id="memberBenefits">
+      <div class="section-heading">
+        <p class="eyebrow">회원 혜택</p>
+        <h2>무료 회원으로 업무 기록을 쌓으세요</h2>
+        <p class="desc">비회원은 입력 폼과 콘텐츠를 확인할 수 있고, 무료 회원은 AI 생성과 반복 업무에 필요한 복사, 전송, 저장, 다운로드 기능을 사용할 수 있습니다.</p>
+      </div>
+      <div class="benefit-grid">
+        <article><h3>비회원</h3><p>입력 폼과 일부 콘텐츠 열람이 가능합니다. API 보호를 위해 AI 생성은 로그인 후 제공됩니다.</p></article>
+        <article><h3>무료 회원</h3><p>AI 메시지 1일 10회, 복사, Zalo 전송, 템플릿 저장, 최근 기록을 사용할 수 있습니다.</p></article>
+        <article><h3>로그인 필요 기능</h3><p>CSV 다운로드, 자료 다운로드, 기록 저장은 회원가입 후 열립니다.</p></article>
+      </div>
+    </section>
   </main>
+
+  <div class="modal-backdrop" id="loginModal" aria-hidden="true">
+    <div class="login-modal" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle">
+      <button class="modal-close" id="modalClose" type="button" aria-label="닫기">×</button>
+      <p class="eyebrow">무료 회원</p>
+      <h2 id="loginModalTitle">결과 활용은 로그인 후 가능합니다</h2>
+      <p>Google로 시작하면 복사, Zalo 전송, 템플릿 저장, 최근 기록을 바로 사용할 수 있습니다.</p>
+      <button class="google-button" id="modalLoginButton" type="button">Google로 무료 시작</button>
+    </div>
+  </div>
 
   <footer class="footer"><p>VN Boss - 베트남 직원에게 전달할 업무 메시지 작성 도구</p></footer>
   <script src="config.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
+
+
 
 
 

@@ -32,6 +32,20 @@ const OUTPUT_SCHEMA = {
 
 export default {
   async fetch(request, env) {
+    try {
+      return await handleRequest(request, env);
+    } catch (error) {
+      console.error('[VN Boss Worker] Unhandled error:', error);
+      return jsonResponse({
+        message: '서버 연결을 확인해주세요.',
+        userFriendly: true,
+        code: 'WORKER_UNHANDLED_ERROR'
+      }, 500);
+    }
+  }
+};
+
+async function handleRequest(request, env) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
@@ -47,7 +61,7 @@ export default {
 
     if (!env.OPENAI_API_KEY) {
       console.error('[VN Boss Worker] OPENAI_API_KEY is missing.');
-      return jsonResponse({ message: '연결 준비가 필요합니다.', userFriendly: true }, 500);
+      return jsonResponse({ message: 'OpenAI API 키 설정을 확인해주세요.', userFriendly: true, code: 'OPENAI_KEY_MISSING' }, 500);
     }
 
     let body;
@@ -89,10 +103,10 @@ export default {
       console.error('[VN Boss Worker] OpenAI request failed:', error);
       const status = error.publicStatus || 503;
       const message = error.publicMessage || '현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.';
-      return jsonResponse({ message, userFriendly: true }, status);
+      return jsonResponse({ message, userFriendly: true, code: error.publicCode || 'AI_REQUEST_FAILED' }, status);
     }
   }
-};
+}
 
 function getOpenAIModel(env) {
   return typeof env.OPENAI_MODEL === 'string' && env.OPENAI_MODEL.trim()
@@ -196,8 +210,8 @@ async function generateWithOpenAI(prompt, model, apiKey) {
 
   if (!response.ok) {
     console.error('[VN Boss Worker] OpenAI API error:', response.status, data);
-    if (response.status === 400) throw publicError('요청 내용을 확인해주세요.', 400);
-    if (response.status === 401 || response.status === 403) throw publicError('연결 준비가 필요합니다.', 500);
+    if (response.status === 400) throw publicError('OpenAI 요청 설정을 확인해주세요.', 400, null, 'OPENAI_BAD_REQUEST');
+    if (response.status === 401 || response.status === 403) throw publicError('OpenAI API 키 또는 모델 권한을 확인해주세요.', 500, null, 'OPENAI_AUTH_FAILED');
     if (response.status === 429) throw publicError('현재 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 429);
     throw publicError('현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 503);
   }
@@ -263,10 +277,11 @@ function parseNoticeJson(text) {
   };
 }
 
-function publicError(message, status, cause) {
+function publicError(message, status, cause, code) {
   const error = new Error(message);
   error.publicMessage = message;
   error.publicStatus = status;
+  if (code) error.publicCode = code;
   if (cause) error.cause = cause;
   return error;
 }
@@ -280,3 +295,5 @@ function jsonResponse(data, status = 200) {
     }
   });
 }
+
+

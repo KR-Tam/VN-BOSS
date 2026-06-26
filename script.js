@@ -58,7 +58,11 @@ function todayString() {
 function getMemberState() {
   try {
     const saved = JSON.parse(localStorage.getItem(MEMBER_STORAGE_KEY) || 'null');
-    if (saved && saved.type === 'free' && saved.userId) return saved;
+    if (saved && saved.provider === 'google-demo') {
+      localStorage.removeItem(MEMBER_STORAGE_KEY);
+    } else if (saved && saved.type === 'free' && saved.userId) {
+      return saved;
+    }
   } catch (error) {}
   return { type: 'guest', userId: getGuestId(), displayName: '비회원' };
 }
@@ -119,17 +123,10 @@ function startGoogleSignup() {
     return;
   }
 
-  const member = {
-    type: 'free',
-    userId: `free-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`,
-    displayName: '무료 회원',
-    provider: 'google-demo',
-    joinedAt: new Date().toISOString()
-  };
-  localStorage.setItem(MEMBER_STORAGE_KEY, JSON.stringify(member));
-  closeLoginModal();
+  localStorage.removeItem(MEMBER_STORAGE_KEY);
   updateMemberUI();
-  setStatus('무료 회원 모드가 활성화되었습니다. Google OAuth URL을 연결하면 실제 Google 가입으로 전환됩니다.');
+  openLoginModal('Google 회원가입 준비 중입니다');
+  setStatus('아직 Google 로그인 주소가 연결되지 않았습니다. 관리자 설정 후 회원가입을 사용할 수 있습니다.', 'warn');
 }
 
 function requireMember(reason) {
@@ -588,6 +585,8 @@ window.VNBossPromptBuilder = {
   callGemini,
   requestGeminiWithModelFallback
 };
+
+
 
 
 

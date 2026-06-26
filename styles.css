@@ -165,3 +165,20 @@ label span em{font-style:normal;color:var(--muted);font-weight:700}
 @media(min-width:700px){
   .benefit-grid{grid-template-columns:repeat(3,1fr)}
 }
+/* Mobile deadline inputs: keep date/time controls centered and stable. */
+.deadline-grid label{min-width:0}
+.deadline-grid input[type="date"],
+.deadline-grid input[type="time"]{display:block;text-align:center;text-align-last:center;appearance:none;-webkit-appearance:none;font-variant-numeric:tabular-nums}
+.deadline-grid input[type="date"]::-webkit-date-and-time-value,
+.deadline-grid input[type="time"]::-webkit-date-and-time-value{text-align:center;width:100%;margin:0 auto}
+.deadline-grid input[type="date"]::-webkit-calendar-picker-indicator,
+.deadline-grid input[type="time"]::-webkit-calendar-picker-indicator{margin-left:0}
+
+@media(max-width:699px){
+  .deadline-grid{grid-template-columns:minmax(0,1fr);justify-items:stretch;gap:14px}
+  .deadline-grid label{width:100%;align-items:center;text-align:center}
+  .deadline-grid label span{width:100%;justify-items:center;text-align:center}
+  .deadline-grid input[type="date"],
+  .deadline-grid input[type="time"]{width:100%;min-height:58px;padding-left:16px;padding-right:16px;font-size:18px;line-height:1.2}
+}
+

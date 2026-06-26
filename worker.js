@@ -1,5 +1,5 @@
-﻿const DEFAULT_OPENAI_MODEL = 'gpt-5-mini';
-const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
+﻿const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+const OPENAI_CHAT_COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_TIMEOUT_MS = 45000;
 
 const DAILY_LIMITS = {
@@ -46,66 +46,66 @@ export default {
 };
 
 async function handleRequest(request, env) {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
-    }
-
-    const url = new URL(request.url);
-    if (url.pathname !== '/api/generate') {
-      return jsonResponse({ message: 'Not found' }, 404);
-    }
-
-    if (request.method !== 'POST') {
-      return jsonResponse({ message: 'Method not allowed' }, 405);
-    }
-
-    if (!env.OPENAI_API_KEY) {
-      console.error('[VN Boss Worker] OPENAI_API_KEY is missing.');
-      return jsonResponse({ message: 'OpenAI API 키 설정을 확인해주세요.', userFriendly: true, code: 'OPENAI_KEY_MISSING' }, 500);
-    }
-
-    let body;
-    try {
-      body = await request.json();
-    } catch (error) {
-      console.error('[VN Boss Worker] Invalid request body:', error);
-      return jsonResponse({ message: '요청 내용을 확인해주세요.', userFriendly: true }, 400);
-    }
-
-    const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-    if (!prompt) {
-      return jsonResponse({ message: '작성할 내용이 필요합니다.', userFriendly: true }, 400);
-    }
-
-    const memberState = getMemberState(request);
-    const quota = await checkDailyQuota(env, memberState);
-    if (!quota.allowed) {
-      return jsonResponse({
-        message: memberState.type === 'guest'
-          ? 'API 보호를 위해 비회원 AI 작성은 제공하지 않습니다. 무료 회원으로 시작하면 하루 10회까지 사용할 수 있습니다.'
-          : '오늘의 무료 회원 AI 사용량을 모두 사용했습니다. 내일 다시 이용해주세요.',
-        userFriendly: true,
-        quota
-      }, 429);
-    }
-
-    try {
-      const model = getOpenAIModel(env);
-      const result = await generateWithOpenAI(prompt, model, env.OPENAI_API_KEY);
-      await recordDailyQuota(env, quota);
-
-      return jsonResponse({
-        korean: result.korean,
-        vietnamese: result.vietnamese,
-        quota: { ...quota, used: quota.used + 1 }
-      }, 200);
-    } catch (error) {
-      console.error('[VN Boss Worker] OpenAI request failed:', error);
-      const status = error.publicStatus || 503;
-      const message = error.publicMessage || '현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.';
-      return jsonResponse({ message, userFriendly: true, code: error.publicCode || 'AI_REQUEST_FAILED' }, status);
-    }
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
+
+  const url = new URL(request.url);
+  if (url.pathname !== '/api/generate') {
+    return jsonResponse({ message: 'Not found' }, 404);
+  }
+
+  if (request.method !== 'POST') {
+    return jsonResponse({ message: 'Method not allowed' }, 405);
+  }
+
+  if (!env.OPENAI_API_KEY) {
+    console.error('[VN Boss Worker] OPENAI_API_KEY is missing.');
+    return jsonResponse({ message: 'OpenAI API 키 설정을 확인해주세요.', userFriendly: true, code: 'OPENAI_KEY_MISSING' }, 500);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (error) {
+    console.error('[VN Boss Worker] Invalid request body:', error);
+    return jsonResponse({ message: '요청 내용을 확인해주세요.', userFriendly: true }, 400);
+  }
+
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+  if (!prompt) {
+    return jsonResponse({ message: '작성할 내용이 필요합니다.', userFriendly: true }, 400);
+  }
+
+  const memberState = getMemberState(request);
+  const quota = await checkDailyQuota(env, memberState);
+  if (!quota.allowed) {
+    return jsonResponse({
+      message: memberState.type === 'guest'
+        ? 'API 보호를 위해 비회원 AI 작성은 제공하지 않습니다. 무료 회원으로 시작하면 하루 10회까지 사용할 수 있습니다.'
+        : '오늘의 무료 회원 AI 사용량을 모두 사용했습니다. 내일 다시 이용해주세요.',
+      userFriendly: true,
+      quota
+    }, 429);
+  }
+
+  try {
+    const model = getOpenAIModel(env);
+    const result = await generateWithOpenAIChat(prompt, model, env.OPENAI_API_KEY);
+    await recordDailyQuota(env, quota);
+
+    return jsonResponse({
+      korean: result.korean,
+      vietnamese: result.vietnamese,
+      quota: { ...quota, used: quota.used + 1 }
+    }, 200);
+  } catch (error) {
+    console.error('[VN Boss Worker] OpenAI request failed:', error);
+    const status = error.publicStatus || 503;
+    const message = error.publicMessage || '현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.';
+    return jsonResponse({ message, userFriendly: true, code: error.publicCode || 'AI_REQUEST_FAILED' }, status);
+  }
+}
 
 function getOpenAIModel(env) {
   return typeof env.OPENAI_MODEL === 'string' && env.OPENAI_MODEL.trim()
@@ -150,24 +150,30 @@ async function recordDailyQuota(env, quota) {
   await env.USAGE_KV.put(quota.key, nextValue, { expirationTtl: 60 * 60 * 36 });
 }
 
-async function generateWithOpenAI(prompt, model, apiKey) {
+async function generateWithOpenAIChat(prompt, model, apiKey) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort('timeout'), OPENAI_TIMEOUT_MS);
 
   const payload = {
     model,
-    instructions: [
-      'You are VN Boss, an assistant for Korean F&B business owners in Vietnam.',
-      'Return only JSON that matches the required schema.',
-      'Do not include markdown, explanations, comments, or extra keys.',
-      'The Korean text must help the Korean owner review the message.',
-      'The Vietnamese text must sound natural and clear for Vietnamese local staff.'
-    ].join('\n'),
-    input: prompt,
-    max_output_tokens: 1200,
-    text: {
-      format: {
-        type: 'json_schema',
+    messages: [
+      {
+        role: 'system',
+        content: [
+          'You are VN Boss, an assistant for Korean F&B business owners in Vietnam.',
+          'Return only valid JSON matching the schema: {"korean":"...","vietnamese":"..."}.',
+          'Do not include markdown, explanations, comments, or extra keys.',
+          'The Korean text must help the Korean owner review the message.',
+          'The Vietnamese text must sound natural and clear for Vietnamese local staff.'
+        ].join('\n')
+      },
+      { role: 'user', content: prompt }
+    ],
+    temperature: 0.35,
+    max_tokens: 1200,
+    response_format: {
+      type: 'json_schema',
+      json_schema: {
         name: 'vn_boss_notice',
         strict: true,
         schema: OUTPUT_SCHEMA
@@ -179,7 +185,7 @@ async function generateWithOpenAI(prompt, model, apiKey) {
   let responseText = '';
 
   try {
-    response = await fetch(OPENAI_RESPONSES_URL, {
+    response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -192,9 +198,9 @@ async function generateWithOpenAI(prompt, model, apiKey) {
     responseText = await response.text();
   } catch (error) {
     if (error.name === 'AbortError' || error.message === 'timeout') {
-      throw publicError('요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.', 504, error);
+      throw publicError('요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.', 504, error, 'OPENAI_TIMEOUT');
     }
-    throw publicError('연결 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', 503, error);
+    throw publicError('연결 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', 503, error, 'OPENAI_NETWORK_ERROR');
   } finally {
     clearTimeout(timeoutId);
   }
@@ -204,51 +210,25 @@ async function generateWithOpenAI(prompt, model, apiKey) {
     data = responseText ? JSON.parse(responseText) : null;
   } catch (error) {
     console.error('[VN Boss Worker] OpenAI response parse failed:', responseText);
-    throw publicError('응답을 읽지 못했습니다. 잠시 후 다시 시도해주세요.', 502, error);
+    throw publicError('응답을 읽지 못했습니다. 잠시 후 다시 시도해주세요.', 502, error, 'OPENAI_PARSE_FAILED');
   }
 
   if (!response.ok) {
-    console.error('[VN Boss Worker] OpenAI API error:', response.status, data);
+    console.error('[VN Boss Worker] OpenAI Chat API error:', response.status, data);
     if (response.status === 400) throw publicError('OpenAI 요청 설정을 확인해주세요.', 400, null, 'OPENAI_BAD_REQUEST');
-    if (response.status === 401 || response.status === 403) throw publicError('OpenAI API 키 또는 모델 권한을 확인해주세요.', 500, null, 'OPENAI_AUTH_FAILED');
-    if (response.status === 429) throw publicError('현재 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 429);
-    throw publicError('현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 503);
+    if (response.status === 401) throw publicError('OpenAI API 키가 유효하지 않습니다.', 500, null, 'OPENAI_AUTH_401');
+    if (response.status === 403) throw publicError('OpenAI 모델 권한 또는 프로젝트 권한을 확인해주세요.', 500, null, 'OPENAI_AUTH_403');
+    if (response.status === 429) throw publicError('현재 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 429, null, 'OPENAI_RATE_LIMITED');
+    throw publicError('현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 503, null, 'OPENAI_UPSTREAM_ERROR');
   }
 
-  if (data?.status === 'incomplete') {
-    console.error('[VN Boss Worker] OpenAI response incomplete:', data?.incomplete_details || data);
-    throw publicError('응답이 너무 길어 완료하지 못했습니다. 내용을 조금 줄여주세요.', 400);
+  const content = data?.choices?.[0]?.message?.content || '';
+  if (!content) {
+    console.error('[VN Boss Worker] OpenAI response missing content:', data);
+    throw publicError('응답 내용이 비어 있습니다. 잠시 후 다시 시도해주세요.', 502, null, 'OPENAI_EMPTY_CONTENT');
   }
 
-  if (data?.status === 'failed' || data?.error) {
-    console.error('[VN Boss Worker] OpenAI response failed:', data?.error || data);
-    throw publicError('현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 503);
-  }
-
-  const text = extractOutputText(data);
-  if (!text) {
-    console.error('[VN Boss Worker] OpenAI response missing output text:', data);
-    throw publicError('응답 내용이 비어 있습니다. 잠시 후 다시 시도해주세요.', 502);
-  }
-
-  return parseNoticeJson(text);
-}
-
-function extractOutputText(data) {
-  if (typeof data?.output_text === 'string' && data.output_text.trim()) {
-    return data.output_text.trim();
-  }
-
-  const parts = [];
-  for (const item of data?.output || []) {
-    for (const content of item?.content || []) {
-      if (content?.type === 'output_text' && typeof content.text === 'string') {
-        parts.push(content.text);
-      }
-    }
-  }
-
-  return parts.join('\n').trim();
+  return parseNoticeJson(content);
 }
 
 function parseNoticeJson(text) {
@@ -261,13 +241,13 @@ function parseNoticeJson(text) {
     if (start > -1 && end > start) {
       parsed = JSON.parse(text.slice(start, end + 1));
     } else {
-      throw publicError('응답 형식을 읽지 못했습니다. 다시 시도해주세요.', 502, error);
+      throw publicError('응답 형식을 읽지 못했습니다. 다시 시도해주세요.', 502, error, 'NOTICE_JSON_PARSE_FAILED');
     }
   }
 
   if (!parsed || typeof parsed.korean !== 'string' || typeof parsed.vietnamese !== 'string') {
     console.error('[VN Boss Worker] Invalid structured output:', parsed);
-    throw publicError('응답 형식을 읽지 못했습니다. 다시 시도해주세요.', 502);
+    throw publicError('응답 형식을 읽지 못했습니다. 다시 시도해주세요.', 502, null, 'NOTICE_JSON_INVALID');
   }
 
   return {
@@ -294,5 +274,3 @@ function jsonResponse(data, status = 200) {
     }
   });
 }
-
-

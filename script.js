@@ -158,6 +158,17 @@ function initFirebaseAuth() {
       updateMemberUI();
       closeLoginModal();
     });
+
+    firebaseAuth.getRedirectResult().then((result) => {
+      if (!result || !result.user) return;
+      saveFirebaseMember(result.user);
+      updateMemberUI();
+      closeLoginModal();
+      setStatus('Google 로그인 완료. 무료 회원 기능을 사용할 수 있습니다.');
+    }).catch((error) => {
+      console.error('[VN Boss] Google redirect sign-in failed:', error);
+      if (error && error.code === 'auth/operation-not-supported-in-this-environment') showSecureBrowserLoginGuide();
+    });
   } catch (error) {
     authReady = false;
     console.error('[VN Boss] Firebase init failed:', error);
@@ -179,6 +190,23 @@ function saveFirebaseMember(user) {
   };
   localStorage.setItem(MEMBER_STORAGE_KEY, JSON.stringify(member));
 }
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+}
+
+function isLikelyInAppBrowser() {
+  const ua = navigator.userAgent || '';
+  return /FBAN|FBAV|Instagram|Line|KAKAOTALK|NAVER|Zalo|MicroMessenger|; wv\)|\bwv\b|GSA/i.test(ua);
+}
+
+function showSecureBrowserLoginGuide() {
+  openLoginModal(
+    '외부 브라우저에서 로그인해주세요',
+    '현재 앱 내부 브라우저에서는 Google 로그인이 차단됩니다. Chrome, Safari 같은 일반 브라우저에서 VN Boss를 열어 로그인해주세요.'
+  );
+  showCopyLinkButton();
+  setStatus('현재 브라우저에서는 Google 로그인이 차단됩니다. 주소를 복사해 Chrome 또는 Safari에서 열어주세요.', 'warn');
+}
 
 async function signInWithGoogle() {
   if (!authReady || !firebaseAuth || !firebaseProvider) {
@@ -190,7 +218,17 @@ async function signInWithGoogle() {
     return;
   }
 
+  if (isLikelyInAppBrowser()) {
+    showSecureBrowserLoginGuide();
+    return;
+  }
+
   try {
+    if (isMobileDevice()) {
+      await firebaseAuth.signInWithRedirect(firebaseProvider);
+      return;
+    }
+
     const result = await firebaseAuth.signInWithPopup(firebaseProvider);
     if (result.user) saveFirebaseMember(result.user);
     updateMemberUI();
@@ -199,6 +237,11 @@ async function signInWithGoogle() {
   } catch (error) {
     console.error('[VN Boss] Google sign-in failed:', error);
     const canceled = error && (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request');
+    const blocked = error && (error.code === 'auth/operation-not-supported-in-this-environment' || error.code === 'auth/web-storage-unsupported');
+    if (blocked) {
+      showSecureBrowserLoginGuide();
+      return;
+    }
     setStatus(canceled ? 'Google 로그인이 취소되었습니다.' : 'Google 로그인에 실패했습니다. Firebase 승인 도메인을 확인해주세요.', 'warn');
   }
 }
@@ -796,6 +839,7 @@ window.VNBossPromptBuilder = {
   callGemini,
   requestGeminiWithModelFallback
 };
+
 
 
 

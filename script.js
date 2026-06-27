@@ -174,10 +174,6 @@ function initFirebaseAuth() {
   }
 }
 
-function isMobileBrowser() {
-  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-}
-
 function isInAppBrowser() {
   return /Zalo|KAKAOTALK|FBAN|FBAV|FB_IAB|Instagram|Line\/|NAVER\(/i.test(navigator.userAgent);
 }
@@ -231,16 +227,6 @@ async function signInWithGoogle() {
     showCopyLinkButton();
     setStatus('Chrome/Safari로 이동을 시도합니다...', 'warn');
     tryOpenExternalBrowser();
-    return;
-  }
-
-  if (isMobileBrowser()) {
-    try {
-      await firebaseAuth.signInWithRedirect(firebaseProvider);
-    } catch (error) {
-      console.error('[VN Boss] Google redirect sign-in failed:', error);
-      setStatus('Google 로그인에 실패했습니다. 브라우저 앱(Chrome/Safari)에서 다시 시도해주세요.', 'warn');
-    }
     return;
   }
 

@@ -1,5 +1,6 @@
 ﻿const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
-const OPENAI_CHAT_COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions';
+const DEFAULT_AI_GATEWAY_ACCOUNT_ID = 'bd0c3fba48bff8f5bec8f88cd625c719';
+const DEFAULT_AI_GATEWAY_ID = 'default';
 const OPENAI_TIMEOUT_MS = 45000;
 
 const DAILY_LIMITS = {
@@ -91,7 +92,8 @@ async function handleRequest(request, env) {
 
   try {
     const model = getOpenAIModel(env);
-    const result = await generateWithOpenAIChat(prompt, model, env.OPENAI_API_KEY);
+    const gatewayUrl = getOpenAIChatEndpoint(env);
+    const result = await generateWithOpenAIChat(prompt, model, env.OPENAI_API_KEY, gatewayUrl);
     await recordDailyQuota(env, quota);
 
     return jsonResponse({
@@ -111,6 +113,21 @@ function getOpenAIModel(env) {
   return typeof env.OPENAI_MODEL === 'string' && env.OPENAI_MODEL.trim()
     ? env.OPENAI_MODEL.trim()
     : DEFAULT_OPENAI_MODEL;
+}
+
+function getOpenAIChatEndpoint(env) {
+  if (typeof env.AI_GATEWAY_OPENAI_CHAT_URL === 'string' && env.AI_GATEWAY_OPENAI_CHAT_URL.trim()) {
+    return env.AI_GATEWAY_OPENAI_CHAT_URL.trim();
+  }
+
+  const accountId = typeof env.AI_GATEWAY_ACCOUNT_ID === 'string' && env.AI_GATEWAY_ACCOUNT_ID.trim()
+    ? env.AI_GATEWAY_ACCOUNT_ID.trim()
+    : DEFAULT_AI_GATEWAY_ACCOUNT_ID;
+  const gatewayId = typeof env.AI_GATEWAY_ID === 'string' && env.AI_GATEWAY_ID.trim()
+    ? env.AI_GATEWAY_ID.trim()
+    : DEFAULT_AI_GATEWAY_ID;
+
+  return 'https://gateway.ai.cloudflare.com/v1/' + accountId + '/' + gatewayId + '/openai/chat/completions';
 }
 
 function getMemberState(request) {
@@ -150,7 +167,7 @@ async function recordDailyQuota(env, quota) {
   await env.USAGE_KV.put(quota.key, nextValue, { expirationTtl: 60 * 60 * 36 });
 }
 
-async function generateWithOpenAIChat(prompt, model, apiKey) {
+async function generateWithOpenAIChat(prompt, model, apiKey, gatewayUrl) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort('timeout'), OPENAI_TIMEOUT_MS);
 
@@ -185,7 +202,7 @@ async function generateWithOpenAIChat(prompt, model, apiKey) {
   let responseText = '';
 
   try {
-    response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
+    response = await fetch(gatewayUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -214,7 +231,7 @@ async function generateWithOpenAIChat(prompt, model, apiKey) {
   }
 
   if (!response.ok) {
-    console.error('[VN Boss Worker] OpenAI Chat API error:', response.status, data);
+    console.error('[VN Boss Worker] OpenAI Gateway Chat API error:', response.status, data);
     if (response.status === 400) throw publicError('OpenAI 요청 설정을 확인해주세요.', 400, null, 'OPENAI_BAD_REQUEST');
     if (response.status === 401) throw publicError('OpenAI API 키가 유효하지 않습니다.', 500, null, 'OPENAI_AUTH_401');
     if (response.status === 403) throw publicError('OpenAI 모델 권한 또는 프로젝트 권한을 확인해주세요.', 500, null, 'OPENAI_AUTH_403');
@@ -274,3 +291,5 @@ function jsonResponse(data, status = 200) {
     }
   });
 }
+
+

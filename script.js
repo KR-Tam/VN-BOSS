@@ -186,7 +186,8 @@ function tryOpenExternalBrowser() {
   const url = window.location.href;
   if (/Android/i.test(navigator.userAgent)) {
     const withoutScheme = url.replace(/^https?:\/\//, '');
-    window.location.href = `intent://${withoutScheme}#Intent;scheme=https;package=com.android.chrome;end`;
+    const fallback = encodeURIComponent(url);
+    window.location.href = `intent://${withoutScheme}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
     return true;
   }
   if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {

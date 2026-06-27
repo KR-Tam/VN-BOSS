@@ -9,6 +9,7 @@ const authButton = document.querySelector('#authButton');
 const loginModal = document.querySelector('#loginModal');
 const modalClose = document.querySelector('#modalClose');
 const modalLoginButton = document.querySelector('#modalLoginButton');
+const copyLinkButton = document.querySelector('#copyLinkButton');
 const historyList = document.querySelector('#historyList');
 const adminLink = document.querySelector('#adminLink');
 const ADMIN_EMAILS = ['sirisiri1148@gmail.com'];
@@ -208,14 +209,12 @@ async function signInWithGoogle() {
   }
 
   if (isInAppBrowser()) {
-    const opened = window.open(window.location.href, '_blank');
-    if (!opened) {
-      openLoginModal(
-        '외부 브라우저에서 로그인해주세요',
-        'Zalo, 카카오톡, 인스타그램 같은 앱 내부 브라우저에서는 Google 로그인이 차단됩니다. 우측 상단 메뉴에서 "다른 브라우저로 열기"를 선택하거나, Chrome/Safari를 열어 주소를 직접 입력해주세요.'
-      );
-    }
-    setStatus('외부 브라우저로 이동합니다. 새로 열린 화면에서 다시 Google로 시작해주세요.', 'warn');
+    openLoginModal(
+      '외부 브라우저에서 로그인해주세요',
+      'Zalo, 카카오톡, 인스타그램 같은 앱 내부 브라우저에서는 Google 로그인이 차단됩니다. 아래 버튼으로 주소를 복사한 뒤, Chrome 또는 Safari를 열어 붙여넣어 주세요.'
+    );
+    showCopyLinkButton();
+    setStatus('앱 내부 브라우저에서는 Google 로그인이 차단됩니다.', 'warn');
     return;
   }
 
@@ -283,6 +282,7 @@ function openLoginModal(reason, detail) {
   if (loginModalCopy) {
     loginModalCopy.textContent = detail || 'Google로 시작하면 복사, Zalo 전송, 템플릿 저장, 최근 기록을 바로 사용할 수 있습니다.';
   }
+  if (copyLinkButton) copyLinkButton.style.display = 'none';
 }
 
 function closeLoginModal() {
@@ -291,6 +291,15 @@ function closeLoginModal() {
   loginModal.setAttribute('aria-hidden', 'true');
   if (loginModalTitle) loginModalTitle.textContent = '결과 활용은 로그인 후 가능합니다';
   if (loginModalCopy) loginModalCopy.textContent = 'Google로 시작하면 복사, Zalo 전송, 템플릿 저장, 최근 기록을 바로 사용할 수 있습니다.';
+  if (copyLinkButton) {
+    copyLinkButton.style.display = 'none';
+    copyLinkButton.textContent = '주소 복사하기';
+  }
+}
+
+function showCopyLinkButton() {
+  if (!copyLinkButton) return;
+  copyLinkButton.style.display = 'block';
 }
 
 function formatJoinedAt(isoString) {
@@ -786,6 +795,14 @@ document.querySelectorAll('[data-action]').forEach((button) => {
 if (authButton) authButton.addEventListener('click', startGoogleSignup);
 if (modalLoginButton) modalLoginButton.addEventListener('click', startGoogleSignup);
 if (modalClose) modalClose.addEventListener('click', closeLoginModal);
+if (copyLinkButton) copyLinkButton.addEventListener('click', () => {
+  navigator.clipboard.writeText(window.location.href).then(() => {
+    copyLinkButton.textContent = '복사 완료';
+    setTimeout(() => { copyLinkButton.textContent = '주소 복사하기'; }, 1500);
+  }).catch(() => {
+    copyLinkButton.textContent = '복사 실패';
+  });
+});
 if (loginModal) loginModal.addEventListener('click', (event) => {
   if (event.target === loginModal) closeLoginModal();
 });

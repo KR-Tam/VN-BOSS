@@ -10,6 +10,8 @@ const loginModal = document.querySelector('#loginModal');
 const modalClose = document.querySelector('#modalClose');
 const modalLoginButton = document.querySelector('#modalLoginButton');
 const historyList = document.querySelector('#historyList');
+const adminLink = document.querySelector('#adminLink');
+const ADMIN_EMAILS = ['sirisiri1148@gmail.com'];
 const loginModalTitle = document.querySelector('#loginModalTitle');
 const loginModalCopy = loginModal ? loginModal.querySelector('p:not(.eyebrow)') : null;
 let firebaseAuth = null;
@@ -229,6 +231,10 @@ function updateMemberUI() {
     usageBox.textContent = member.type === 'free'
       ? `무료 회원 AI 사용량: ${used}/${limit}회`
       : `비회원은 폼 작성만 체험할 수 있습니다 · AI 생성, 복사, Zalo 전송, 저장은 로그인 후 가능합니다.`;
+  }
+  if (adminLink) {
+    const isAdmin = member.type === 'free' && ADMIN_EMAILS.includes((member.email || '').toLowerCase());
+    adminLink.style.display = isAdmin ? 'inline-block' : 'none';
   }
   renderHistory();
 }

@@ -23,6 +23,10 @@ const profileSaveButton = document.querySelector('#profileSaveButton');
 const profileLogoutButton = document.querySelector('#profileLogoutButton');
 const editProfileButton = document.querySelector('#editProfileButton');
 const logoutButton = document.querySelector('#logoutButton');
+const historyManageButton = document.querySelector('#historyManageButton');
+const historyModal = document.querySelector('#historyModal');
+const historyModalClose = document.querySelector('#historyModalClose');
+const historyModalList = document.querySelector('#historyModalList');
 const loginModalTitle = document.querySelector('#loginModalTitle');
 const loginModalCopy = loginModal ? loginModal.querySelector('p:not(.eyebrow)') : null;
 let firebaseAuth = null;
@@ -362,6 +366,7 @@ function updateMemberUI() {
     authButton.style.display = isFreeMember ? 'none' : '';
   }
   if (editProfileButton) editProfileButton.style.display = isFreeMember ? '' : 'none';
+  if (historyManageButton) historyManageButton.style.display = isFreeMember ? '' : 'none';
   if (logoutButton) logoutButton.style.display = isFreeMember ? '' : 'none';
   if (usageBox) {
     usageBox.textContent = member.type === 'free'
@@ -705,21 +710,39 @@ function saveTemplate() {
   setStatus('자주 쓰는 템플릿으로 저장되었습니다.');
 }
 
-function renderHistory() {
-  if (!historyList) return;
+function renderHistoryInto(container) {
+  if (!container) return;
   if (!isMember()) {
-    historyList.textContent = '로그인하면 최근 생성 기록을 저장하고 다시 확인할 수 있습니다.';
+    container.textContent = '로그인하면 최근 생성 기록을 저장하고 다시 확인할 수 있습니다.';
     return;
   }
   const history = getSavedList(HISTORY_STORAGE_KEY);
   if (!history.length) {
-    historyList.textContent = '아직 저장된 생성 기록이 없습니다.';
+    container.textContent = '아직 저장된 생성 기록이 없습니다.';
     return;
   }
-  historyList.innerHTML = history.map((item) => {
+  container.innerHTML = history.map((item) => {
     const date = new Date(item.savedAt).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     return `<button type="button" class="history-item" data-history-id="${item.savedAt}"><strong>${date}</strong><span>${item.vietnamese.slice(0, 80)}</span></button>`;
   }).join('');
+}
+
+function renderHistory() {
+  renderHistoryInto(historyList);
+  renderHistoryInto(historyModalList);
+}
+
+function openHistoryModal() {
+  if (!historyModal || !isMember()) return;
+  renderHistoryInto(historyModalList);
+  historyModal.classList.add('show');
+  historyModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeHistoryModal() {
+  if (!historyModal) return;
+  historyModal.classList.remove('show');
+  historyModal.setAttribute('aria-hidden', 'true');
 }
 
 function openZaloShare(sourceId) {
@@ -835,14 +858,22 @@ if (profileSaveButton) profileSaveButton.addEventListener('click', () => {
 if (profileLogoutButton) profileLogoutButton.addEventListener('click', signOutMember);
 if (editProfileButton) editProfileButton.addEventListener('click', openProfileModal);
 if (logoutButton) logoutButton.addEventListener('click', signOutMember);
-if (historyList) historyList.addEventListener('click', (event) => {
+if (historyManageButton) historyManageButton.addEventListener('click', openHistoryModal);
+if (historyModalClose) historyModalClose.addEventListener('click', closeHistoryModal);
+if (historyModal) historyModal.addEventListener('click', (event) => {
+  if (event.target === historyModal) closeHistoryModal();
+});
+function handleHistoryItemClick(event) {
   const itemButton = event.target.closest('[data-history-id]');
   if (!itemButton) return;
   const item = getSavedList(HISTORY_STORAGE_KEY).find((entry) => entry.savedAt === itemButton.dataset.historyId);
   if (!item) return;
   renderResult({ korean: item.korean, vietnamese: item.vietnamese });
   setStatus('저장된 기록을 불러왔습니다.');
-});
+  closeHistoryModal();
+}
+if (historyList) historyList.addEventListener('click', handleHistoryItemClick);
+if (historyModalList) historyModalList.addEventListener('click', handleHistoryItemClick);
 
 window.VNBossPromptBuilder = {
   getNoticeInputs,

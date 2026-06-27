@@ -153,7 +153,7 @@ async function generateWithOpenAIChat(prompt, model, apiKey, gatewayUrl) {
   const timeoutId = setTimeout(() => controller.abort('timeout'), OPENAI_TIMEOUT_MS);
 
   const payload = {
-    model,
+    model: `openai/${model}`,
     messages: [
       {
         role: 'system',

@@ -120,7 +120,7 @@ function getAdminEmails(env) {
 }
 
 async function resolveAdminSecret(env) {
-  const raw = env.ADMIN_SECRET;
+  const raw = env.VNBOSS_ADMIN_KEY;
   if (typeof raw === 'string') return raw;
   if (raw && typeof raw.get === 'function') return await raw.get();
   return '';
@@ -130,7 +130,7 @@ async function isAdminRequest(request, env) {
   const secret = (await resolveAdminSecret(env)) || '';
   const provided = request.headers.get('X-VN-Boss-Admin-Secret') || '';
   console.log('[VN Boss Worker] admin auth check:', JSON.stringify({
-    secretType: typeof env.ADMIN_SECRET,
+    secretType: typeof env.VNBOSS_ADMIN_KEY,
     secretSet: Boolean(secret),
     secretLength: secret.length,
     providedLength: provided.length,

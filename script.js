@@ -290,19 +290,37 @@ function closeLoginModal() {
   if (loginModalCopy) loginModalCopy.textContent = 'Google로 시작하면 복사, Zalo 전송, 템플릿 저장, 최근 기록을 바로 사용할 수 있습니다.';
 }
 
-function openProfileModal() {
+function formatJoinedAt(isoString) {
+  if (!isoString) return '-';
+  return new Date(isoString).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+async function openProfileModal() {
   if (!profileModal || !isMember()) return;
   const member = getMemberState();
   if (profileEmail) profileEmail.textContent = member.email || '-';
-  if (profileJoinedAt) {
-    profileJoinedAt.textContent = member.joinedAt
-      ? new Date(member.joinedAt).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
-      : '-';
-  }
+  if (profileJoinedAt) profileJoinedAt.textContent = formatJoinedAt(member.joinedAt);
   if (profileUsage) profileUsage.textContent = `${getCurrentUsageCount()}/${getCurrentLimit()}회`;
   if (profileNicknameInput) profileNicknameInput.value = member.customDisplayName || '';
   profileModal.classList.add('show');
   profileModal.setAttribute('aria-hidden', 'false');
+
+  try {
+    const status = getConfigStatus();
+    const base = status.endpoint.replace(/\/api\/generate$/, '');
+    const response = await fetch(`${base}/api/member-info`, {
+      headers: {
+        'X-VN-Boss-Member-State': member.type,
+        'X-VN-Boss-User-Id': member.userId
+      }
+    });
+    const data = await response.json();
+    if (data.firstSeen && profileJoinedAt) {
+      profileJoinedAt.textContent = formatJoinedAt(data.firstSeen);
+    }
+  } catch (error) {
+    console.error('[VN Boss] Failed to load member info:', error);
+  }
 }
 
 function closeProfileModal() {
@@ -767,10 +785,6 @@ if (modalLoginButton) modalLoginButton.addEventListener('click', startGoogleSign
 if (modalClose) modalClose.addEventListener('click', closeLoginModal);
 if (loginModal) loginModal.addEventListener('click', (event) => {
   if (event.target === loginModal) closeLoginModal();
-});
-if (memberPill) memberPill.addEventListener('click', () => {
-  if (isMember()) openProfileModal();
-  else openLoginModal('로그인 후 내 정보를 확인할 수 있습니다');
 });
 if (profileModalClose) profileModalClose.addEventListener('click', closeProfileModal);
 if (profileModal) profileModal.addEventListener('click', (event) => {

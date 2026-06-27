@@ -119,8 +119,6 @@ function getAdminEmails(env) {
     .filter(Boolean);
 }
 
-const TEMP_HARDCODED_ADMIN_SECRET = 'vnboss-test-1234';
-
 async function resolveAdminSecret(env) {
   const raw = env.VNBOSS_ADMIN_KEY;
   if (typeof raw === 'string' && raw) return raw;
@@ -128,19 +126,12 @@ async function resolveAdminSecret(env) {
     const value = await raw.get();
     if (value) return value;
   }
-  return TEMP_HARDCODED_ADMIN_SECRET;
+  return '';
 }
 
 async function isAdminRequest(request, env) {
   const secret = (await resolveAdminSecret(env)) || '';
   const provided = request.headers.get('X-VN-Boss-Admin-Secret') || '';
-  console.log('[VN Boss Worker] admin auth check:', JSON.stringify({
-    secretType: typeof env.VNBOSS_ADMIN_KEY,
-    secretSet: Boolean(secret),
-    secretLength: secret.length,
-    providedLength: provided.length,
-    match: provided === secret
-  }));
   if (!secret) return false;
   return provided === secret;
 }

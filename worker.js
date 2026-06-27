@@ -80,7 +80,9 @@ async function handleRequest(request, env) {
 
   const memberState = getMemberState(request);
   const quota = await checkDailyQuota(env, memberState);
+  console.log('[VN Boss Worker] quota check:', JSON.stringify({ memberType: memberState.type, userId: memberState.userId, allowed: quota.allowed, used: quota.used, limit: quota.limit }));
   if (!quota.allowed) {
+    console.warn('[VN Boss Worker] request blocked before AI Gateway:', JSON.stringify({ memberType: memberState.type, quota }));
     return jsonResponse({
       message: memberState.type === 'guest'
         ? 'API 보호를 위해 비회원 AI 작성은 제공하지 않습니다. 무료 회원으로 시작하면 하루 10회까지 사용할 수 있습니다.'
@@ -93,6 +95,7 @@ async function handleRequest(request, env) {
   try {
     const model = getOpenAIModel(env);
     const gatewayUrl = getOpenAIChatEndpoint(env);
+    console.log('[VN Boss Worker] calling AI Gateway:', gatewayUrl);
     const result = await generateWithOpenAIChat(prompt, model, env.OPENAI_API_KEY, gatewayUrl);
     await recordDailyQuota(env, quota);
 
@@ -291,6 +294,7 @@ function jsonResponse(data, status = 200) {
     }
   });
 }
+
 
 
 

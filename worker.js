@@ -1,4 +1,5 @@
 ﻿const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+const DEFAULT_AI_GATEWAY_OPENAI_CHAT_URL = 'https://gateway.ai.cloudflare.com/v1/bd0c3fba48bff8f5bec8f88cd625c719/vnboss-gateway/compat/chat/completions';
 const DEFAULT_AI_GATEWAY_ACCOUNT_ID = 'bd0c3fba48bff8f5bec8f88cd625c719';
 const DEFAULT_AI_GATEWAY_ID = 'vnboss-gateway';
 const OPENAI_TIMEOUT_MS = 45000;
@@ -123,14 +124,7 @@ function getOpenAIChatEndpoint(env) {
     return env.AI_GATEWAY_OPENAI_CHAT_URL.trim();
   }
 
-  const accountId = typeof env.AI_GATEWAY_ACCOUNT_ID === 'string' && env.AI_GATEWAY_ACCOUNT_ID.trim()
-    ? env.AI_GATEWAY_ACCOUNT_ID.trim()
-    : DEFAULT_AI_GATEWAY_ACCOUNT_ID;
-  const gatewayId = typeof env.AI_GATEWAY_ID === 'string' && env.AI_GATEWAY_ID.trim()
-    ? env.AI_GATEWAY_ID.trim()
-    : DEFAULT_AI_GATEWAY_ID;
-
-  return 'https://gateway.ai.cloudflare.com/v1/' + accountId + '/' + gatewayId + '/compat/chat/completions';
+  return DEFAULT_AI_GATEWAY_OPENAI_CHAT_URL;
 }
 
 function getMemberState(request) {
@@ -216,6 +210,7 @@ async function generateWithOpenAIChat(prompt, model, apiKey, gatewayUrl) {
     });
 
     responseText = await response.text();
+    console.log('[VN Boss Worker] AI Gateway response:', JSON.stringify({ status: response.status, ok: response.ok, bodyPreview: responseText.slice(0, 500) }));
   } catch (error) {
     if (error.name === 'AbortError' || error.message === 'timeout') {
       throw publicError('요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.', 504, error, 'OPENAI_TIMEOUT');
@@ -294,6 +289,7 @@ function jsonResponse(data, status = 200) {
     }
   });
 }
+
 
 
 

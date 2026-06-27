@@ -208,11 +208,14 @@ async function signInWithGoogle() {
   }
 
   if (isInAppBrowser()) {
-    openLoginModal(
-      '외부 브라우저에서 로그인해주세요',
-      'Zalo, 카카오톡, 인스타그램 같은 앱 내부 브라우저에서는 Google 로그인이 차단됩니다. 우측 상단 메뉴에서 "다른 브라우저로 열기"를 선택하거나, Chrome/Safari를 열어 주소를 직접 입력해주세요.'
-    );
-    setStatus('앱 내부 브라우저에서는 Google 로그인이 차단됩니다. Chrome/Safari로 열어주세요.', 'warn');
+    const opened = window.open(window.location.href, '_blank');
+    if (!opened) {
+      openLoginModal(
+        '외부 브라우저에서 로그인해주세요',
+        'Zalo, 카카오톡, 인스타그램 같은 앱 내부 브라우저에서는 Google 로그인이 차단됩니다. 우측 상단 메뉴에서 "다른 브라우저로 열기"를 선택하거나, Chrome/Safari를 열어 주소를 직접 입력해주세요.'
+      );
+    }
+    setStatus('외부 브라우저로 이동합니다. 새로 열린 화면에서 다시 Google로 시작해주세요.', 'warn');
     return;
   }
 

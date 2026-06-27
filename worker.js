@@ -16,22 +16,6 @@ const CORS_HEADERS = {
   'Access-Control-Max-Age': '86400'
 };
 
-const OUTPUT_SCHEMA = {
-  type: 'object',
-  properties: {
-    korean: {
-      type: 'string',
-      description: 'Korean review version for the business owner.'
-    },
-    vietnamese: {
-      type: 'string',
-      description: 'Natural Vietnamese workplace notice for local staff.'
-    }
-  },
-  required: ['korean', 'vietnamese'],
-  additionalProperties: false
-};
-
 export default {
   async fetch(request, env) {
     try {
@@ -185,14 +169,7 @@ async function generateWithOpenAIChat(prompt, model, apiKey, gatewayUrl) {
     ],
     temperature: 0.35,
     max_tokens: 1200,
-    response_format: {
-      type: 'json_schema',
-      json_schema: {
-        name: 'vn_boss_notice',
-        strict: true,
-        schema: OUTPUT_SCHEMA
-      }
-    }
+    response_format: { type: 'json_object' }
   };
 
   let response;

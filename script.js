@@ -607,10 +607,10 @@ async function handleGenerate(event) {
   if (!canUseAiPreview()) {
     const member = getMemberState();
     if (member.type === 'guest') {
-      openLoginModal('AI 메시지 작성은 로그인 후 가능합니다');
-      setStatus('API 보호를 위해 비회원 AI 작성은 제공하지 않습니다. 무료 회원은 하루 10회까지 사용할 수 있습니다.', 'warn');
+      openLoginModal('메시지 작성은 로그인 후 가능합니다');
+      setStatus('서비스 보호를 위해 비회원 메시지 작성은 제공하지 않습니다. 무료 회원은 하루 10회까지 사용할 수 있습니다.', 'warn');
     } else {
-      setStatus('오늘의 무료 회원 AI 사용량을 모두 사용했습니다. 내일 다시 이용해주세요.', 'warn');
+      setStatus('오늘의 무료 회원 메시지 작성 사용량을 모두 사용했습니다. 내일 다시 이용해주세요.', 'warn');
     }
     messageRequestInProgress = false;
     return;

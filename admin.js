@@ -90,7 +90,7 @@ async function loadMembers() {
 
 function renderMembers(members) {
   if (!members.length) {
-    membersTableWrap.innerHTML = '<p class="admin-empty">아직 기록된 회원이 없습니다. 회원이 AI 생성을 한 번 이상 시도하면 표시됩니다.</p>';
+    membersTableWrap.innerHTML = '<p class="admin-empty">아직 기록된 회원이 없습니다. 회원이 메시지 생성을 한 번 이상 시도하면 표시됩니다.</p>';
     return;
   }
 

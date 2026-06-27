@@ -82,8 +82,8 @@ async function handleRequest(request, env) {
     console.warn('[VN Boss Worker] request blocked before AI Gateway:', JSON.stringify({ memberType: memberState.type, quota }));
     return jsonResponse({
       message: memberState.type === 'guest'
-        ? 'API 보호를 위해 비회원 AI 작성은 제공하지 않습니다. 무료 회원으로 시작하면 하루 10회까지 사용할 수 있습니다.'
-        : '오늘의 무료 회원 AI 사용량을 모두 사용했습니다. 내일 다시 이용해주세요.',
+        ? '서비스 보호를 위해 비회원 메시지 작성은 제공하지 않습니다. 무료 회원으로 시작하면 하루 10회까지 사용할 수 있습니다.'
+        : '오늘의 무료 회원 메시지 작성 사용량을 모두 사용했습니다. 내일 다시 이용해주세요.',
       userFriendly: true,
       quota
     }, 429);
@@ -104,7 +104,7 @@ async function handleRequest(request, env) {
   } catch (error) {
     console.error('[VN Boss Worker] OpenAI request failed:', error);
     const status = error.publicStatus || 503;
-    const message = error.publicMessage || '현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.';
+    const message = error.publicMessage || '현재 이용량이 많습니다. 잠시 후 다시 시도해주세요.';
     await recordErrorLog(env, {
       code: error.publicCode || 'AI_REQUEST_FAILED',
       message: error.publicMessage || error.message || 'unknown error',
@@ -389,7 +389,7 @@ async function generateWithOpenAIChat(prompt, model, apiKey, gatewayUrl) {
     if (response.status === 401) throw publicError('OpenAI API 키가 유효하지 않습니다.', 500, null, 'OPENAI_AUTH_401');
     if (response.status === 403) throw publicError('OpenAI 모델 권한 또는 프로젝트 권한을 확인해주세요.', 500, null, 'OPENAI_AUTH_403');
     if (response.status === 429) throw publicError('현재 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 429, null, 'OPENAI_RATE_LIMITED');
-    throw publicError('현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 503, null, 'OPENAI_UPSTREAM_ERROR');
+    throw publicError('현재 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 503, null, 'OPENAI_UPSTREAM_ERROR');
   }
 
   const content = data?.choices?.[0]?.message?.content || '';

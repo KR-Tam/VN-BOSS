@@ -182,6 +182,20 @@ function isInAppBrowser() {
   return /Zalo|KAKAOTALK|FBAN|FBAV|FB_IAB|Instagram|Line\/|NAVER\(/i.test(navigator.userAgent);
 }
 
+function tryOpenExternalBrowser() {
+  const url = window.location.href;
+  if (/Android/i.test(navigator.userAgent)) {
+    const withoutScheme = url.replace(/^https?:\/\//, '');
+    window.location.href = `intent://${withoutScheme}#Intent;scheme=https;package=com.android.chrome;end`;
+    return true;
+  }
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    window.location.href = url.replace(/^https/, 'x-safari-https');
+    return true;
+  }
+  return false;
+}
+
 function saveFirebaseMember(user) {
   const existing = getMemberState();
   const customName = existing.userId === user.uid && existing.customDisplayName ? existing.customDisplayName : '';
@@ -210,11 +224,12 @@ async function signInWithGoogle() {
 
   if (isInAppBrowser()) {
     openLoginModal(
-      '외부 브라우저에서 로그인해주세요',
-      'Zalo, 카카오톡, 인스타그램 같은 앱 내부 브라우저에서는 Google 로그인이 차단됩니다. 아래 버튼으로 주소를 복사한 뒤, Chrome 또는 Safari를 열어 붙여넣어 주세요.'
+      '외부 브라우저로 이동합니다',
+      'Zalo, 카카오톡, 인스타그램 같은 앱 내부 브라우저에서는 Google 로그인이 차단됩니다. Chrome 또는 Safari가 자동으로 열리면 그 화면에서 다시 "Google로 시작"을 눌러주세요. 자동으로 안 열리면 아래 버튼으로 주소를 복사해 붙여넣어 주세요.'
     );
     showCopyLinkButton();
-    setStatus('앱 내부 브라우저에서는 Google 로그인이 차단됩니다.', 'warn');
+    setStatus('Chrome/Safari로 이동을 시도합니다...', 'warn');
+    tryOpenExternalBrowser();
     return;
   }
 

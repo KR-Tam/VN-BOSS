@@ -421,7 +421,9 @@ async function callGemini(prompt, options = {}) {
       headers: {
         'Content-Type': 'application/json',
         'X-VN-Boss-Member-State': getMemberState().type,
-        'X-VN-Boss-User-Id': getMemberState().userId
+        'X-VN-Boss-User-Id': getMemberState().userId,
+        'X-VN-Boss-Email': getMemberState().email || '',
+        'X-VN-Boss-Display-Name': getMemberState().displayName || ''
       },
       body: JSON.stringify({ prompt }),
       signal: controller.signal

@@ -11,10 +11,12 @@ const DAILY_LIMITS = {
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-VN-Boss-Member-State, X-VN-Boss-User-Id',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, X-VN-Boss-Member-State, X-VN-Boss-User-Id, X-VN-Boss-Email, X-VN-Boss-Display-Name, X-VN-Boss-Admin-Secret',
   'Access-Control-Max-Age': '86400'
 };
+
+const MAX_ERROR_LOG_ENTRIES = 20;
 
 export default {
   async fetch(request, env) {
@@ -37,6 +39,11 @@ async function handleRequest(request, env) {
   }
 
   const url = new URL(request.url);
+
+  if (url.pathname.startsWith('/api/admin/')) {
+    return handleAdminRequest(request, env, url);
+  }
+
   if (url.pathname !== '/api/generate') {
     return jsonResponse({ message: 'Not found' }, 404);
   }
@@ -64,6 +71,7 @@ async function handleRequest(request, env) {
   }
 
   const memberState = getMemberState(request);
+  await recordMember(env, memberState);
   const quota = await checkDailyQuota(env, memberState);
   console.log('[VN Boss Worker] quota check:', JSON.stringify({ memberType: memberState.type, userId: memberState.userId, allowed: quota.allowed, used: quota.used, limit: quota.limit }));
   if (!quota.allowed) {
@@ -93,7 +101,137 @@ async function handleRequest(request, env) {
     console.error('[VN Boss Worker] OpenAI request failed:', error);
     const status = error.publicStatus || 503;
     const message = error.publicMessage || '현재 AI 이용량이 많습니다. 잠시 후 다시 시도해주세요.';
+    await recordErrorLog(env, {
+      code: error.publicCode || 'AI_REQUEST_FAILED',
+      message: error.publicMessage || error.message || 'unknown error',
+      status,
+      memberType: memberState.type,
+      userId: memberState.userId
+    });
     return jsonResponse({ message, userFriendly: true, code: error.publicCode || 'AI_REQUEST_FAILED' }, status);
+  }
+}
+
+function getAdminEmails(env) {
+  return (env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isAdminRequest(request, env) {
+  const secret = env.ADMIN_SECRET || '';
+  if (!secret) return false;
+  const provided = request.headers.get('X-VN-Boss-Admin-Secret') || '';
+  return provided === secret;
+}
+
+async function handleAdminRequest(request, env, url) {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
+  if (!isAdminRequest(request, env)) {
+    return jsonResponse({ message: '관리자 인증이 필요합니다.', userFriendly: true, code: 'ADMIN_AUTH_REQUIRED' }, 401);
+  }
+
+  if (!env.USAGE_KV) {
+    return jsonResponse({ message: 'KV 저장소가 연결되지 않았습니다.', userFriendly: true, code: 'KV_NOT_BOUND' }, 500);
+  }
+
+  if (url.pathname === '/api/admin/members' && request.method === 'GET') {
+    const members = await listMembers(env);
+    return jsonResponse({ members }, 200);
+  }
+
+  if (url.pathname === '/api/admin/errors' && request.method === 'GET') {
+    const errors = await getErrorLog(env);
+    return jsonResponse({ errors }, 200);
+  }
+
+  if (url.pathname === '/api/admin/reset-quota' && request.method === 'POST') {
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return jsonResponse({ message: '요청 내용을 확인해주세요.', userFriendly: true }, 400);
+    }
+    const userId = typeof body.userId === 'string' ? body.userId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80) : '';
+    const memberType = body.memberType === 'guest' ? 'guest' : 'free';
+    if (!userId) {
+      return jsonResponse({ message: 'userId가 필요합니다.', userFriendly: true }, 400);
+    }
+    const key = `usage:${getQuotaDate()}:${memberType}:${userId}`;
+    await env.USAGE_KV.delete(key);
+    return jsonResponse({ message: '사용량이 초기화되었습니다.' }, 200);
+  }
+
+  return jsonResponse({ message: 'Not found' }, 404);
+}
+
+async function recordMember(env, memberState) {
+  if (!env.USAGE_KV || memberState.type !== 'free') return;
+  const key = `member:${memberState.userId}`;
+  const now = new Date().toISOString();
+  let existing = null;
+  try {
+    const raw = await env.USAGE_KV.get(key);
+    existing = raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    existing = null;
+  }
+
+  const record = {
+    userId: memberState.userId,
+    email: memberState.email || existing?.email || '',
+    displayName: memberState.displayName || existing?.displayName || '',
+    firstSeen: existing?.firstSeen || now,
+    lastSeen: now,
+    totalRequests: (existing?.totalRequests || 0) + 1
+  };
+
+  await env.USAGE_KV.put(key, JSON.stringify(record));
+}
+
+async function listMembers(env) {
+  const members = [];
+  let cursor;
+  do {
+    const page = await env.USAGE_KV.list({ prefix: 'member:', cursor });
+    for (const item of page.keys) {
+      const raw = await env.USAGE_KV.get(item.name);
+      if (raw) {
+        try {
+          members.push(JSON.parse(raw));
+        } catch (error) {}
+      }
+    }
+    cursor = page.list_complete ? null : page.cursor;
+  } while (cursor);
+
+  members.sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''));
+  return members;
+}
+
+async function recordErrorLog(env, entry) {
+  if (!env.USAGE_KV) return;
+  try {
+    const raw = await env.USAGE_KV.get('admin:errors');
+    const list = raw ? JSON.parse(raw) : [];
+    list.unshift({ ...entry, at: new Date().toISOString() });
+    await env.USAGE_KV.put('admin:errors', JSON.stringify(list.slice(0, MAX_ERROR_LOG_ENTRIES)));
+  } catch (error) {
+    console.error('[VN Boss Worker] Failed to record error log:', error);
+  }
+}
+
+async function getErrorLog(env) {
+  const raw = await env.USAGE_KV.get('admin:errors');
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    return [];
   }
 }
 
@@ -116,7 +254,9 @@ function getMemberState(request) {
   const type = rawType === 'free' ? 'free' : 'guest';
   const rawUserId = request.headers.get('X-VN-Boss-User-Id') || '';
   const userId = rawUserId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80) || 'anonymous';
-  return { type, userId };
+  const email = (request.headers.get('X-VN-Boss-Email') || '').slice(0, 200);
+  const displayName = (request.headers.get('X-VN-Boss-Display-Name') || '').slice(0, 200);
+  return { type, userId, email, displayName };
 }
 
 function getQuotaDate() {

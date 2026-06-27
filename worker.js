@@ -121,8 +121,14 @@ function getAdminEmails(env) {
 
 function isAdminRequest(request, env) {
   const secret = env.ADMIN_SECRET || '';
-  if (!secret) return false;
   const provided = request.headers.get('X-VN-Boss-Admin-Secret') || '';
+  console.log('[VN Boss Worker] admin auth check:', JSON.stringify({
+    secretSet: Boolean(secret),
+    secretLength: secret.length,
+    providedLength: provided.length,
+    match: provided === secret
+  }));
+  if (!secret) return false;
   return provided === secret;
 }
 

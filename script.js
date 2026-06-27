@@ -20,6 +20,8 @@ const profileUsage = document.querySelector('#profileUsage');
 const profileNicknameInput = document.querySelector('#profileNicknameInput');
 const profileSaveButton = document.querySelector('#profileSaveButton');
 const profileLogoutButton = document.querySelector('#profileLogoutButton');
+const editProfileButton = document.querySelector('#editProfileButton');
+const logoutButton = document.querySelector('#logoutButton');
 const loginModalTitle = document.querySelector('#loginModalTitle');
 const loginModalCopy = loginModal ? loginModal.querySelector('p:not(.eyebrow)') : null;
 let firebaseAuth = null;
@@ -300,9 +302,15 @@ function updateMemberUI() {
   const member = getMemberState();
   const used = getCurrentUsageCount();
   const limit = getCurrentLimit();
-  if (memberPill) memberPill.textContent = member.type === 'free' ? '무료 회원 · ' + (member.displayName || 'Google') : '비회원';
-  if (authButton) authButton.textContent = member.type === 'free' ? '회원 활성화됨' : 'Google로 시작';
-  if (authButton) authButton.disabled = member.type === 'free';
+  const isFreeMember = member.type === 'free';
+  if (memberPill) memberPill.textContent = isFreeMember ? '무료 회원 · ' + (member.displayName || 'Google') : '비회원';
+  if (authButton) {
+    authButton.textContent = 'Google로 시작';
+    authButton.disabled = false;
+    authButton.style.display = isFreeMember ? 'none' : '';
+  }
+  if (editProfileButton) editProfileButton.style.display = isFreeMember ? '' : 'none';
+  if (logoutButton) logoutButton.style.display = isFreeMember ? '' : 'none';
   if (usageBox) {
     usageBox.textContent = member.type === 'free'
       ? `무료 회원 AI 사용량: ${used}/${limit}회`
@@ -737,6 +745,8 @@ if (profileSaveButton) profileSaveButton.addEventListener('click', () => {
   closeProfileModal();
 });
 if (profileLogoutButton) profileLogoutButton.addEventListener('click', signOutMember);
+if (editProfileButton) editProfileButton.addEventListener('click', openProfileModal);
+if (logoutButton) logoutButton.addEventListener('click', signOutMember);
 if (historyList) historyList.addEventListener('click', (event) => {
   const itemButton = event.target.closest('[data-history-id]');
   if (!itemButton) return;

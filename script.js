@@ -158,39 +158,10 @@ function initFirebaseAuth() {
       updateMemberUI();
       closeLoginModal();
     });
-
-    firebaseAuth.getRedirectResult().then((result) => {
-      if (result && result.user) {
-        saveFirebaseMember(result.user);
-        updateMemberUI();
-        setStatus('Google 로그인 완료. 무료 회원 기능을 사용할 수 있습니다.');
-      }
-    }).catch((error) => {
-      console.error('[VN Boss] Redirect sign-in failed:', error);
-    });
   } catch (error) {
     authReady = false;
     console.error('[VN Boss] Firebase init failed:', error);
   }
-}
-
-function isInAppBrowser() {
-  return /Zalo|KAKAOTALK|FBAN|FBAV|FB_IAB|Instagram|Line\/|NAVER\(/i.test(navigator.userAgent);
-}
-
-function tryOpenExternalBrowser() {
-  const url = window.location.href;
-  if (/Android/i.test(navigator.userAgent)) {
-    const withoutScheme = url.replace(/^https?:\/\//, '');
-    const fallback = encodeURIComponent(url);
-    window.location.href = `intent://${withoutScheme}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
-    return true;
-  }
-  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-    window.location.href = url.replace(/^https/, 'x-safari-https');
-    return true;
-  }
-  return false;
 }
 
 function saveFirebaseMember(user) {
@@ -216,17 +187,6 @@ async function signInWithGoogle() {
       'Firebase 로그인을 불러오지 못했습니다. 잠시 후 다시 시도하거나 관리자에게 문의해주세요.'
     );
     setStatus('Google 로그인 설정을 확인해주세요.', 'warn');
-    return;
-  }
-
-  if (isInAppBrowser()) {
-    openLoginModal(
-      '외부 브라우저로 이동합니다',
-      'Zalo, 카카오톡, 인스타그램 같은 앱 내부 브라우저에서는 Google 로그인이 차단됩니다. Chrome 또는 Safari가 자동으로 열리면 그 화면에서 다시 "Google로 시작"을 눌러주세요. 자동으로 안 열리면 아래 버튼으로 주소를 복사해 붙여넣어 주세요.'
-    );
-    showCopyLinkButton();
-    setStatus('Chrome/Safari로 이동을 시도합니다...', 'warn');
-    tryOpenExternalBrowser();
     return;
   }
 

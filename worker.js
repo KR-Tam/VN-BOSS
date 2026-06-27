@@ -1,6 +1,6 @@
 ﻿const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 const DEFAULT_AI_GATEWAY_ACCOUNT_ID = 'bd0c3fba48bff8f5bec8f88cd625c719';
-const DEFAULT_AI_GATEWAY_ID = 'default';
+const DEFAULT_AI_GATEWAY_ID = 'vnboss-gateway';
 const OPENAI_TIMEOUT_MS = 45000;
 
 const DAILY_LIMITS = {
@@ -127,7 +127,7 @@ function getOpenAIChatEndpoint(env) {
     ? env.AI_GATEWAY_ID.trim()
     : DEFAULT_AI_GATEWAY_ID;
 
-  return 'https://gateway.ai.cloudflare.com/v1/' + accountId + '/' + gatewayId + '/openai/chat/completions';
+  return 'https://gateway.ai.cloudflare.com/v1/' + accountId + '/' + gatewayId + '/compat/chat/completions';
 }
 
 function getMemberState(request) {
@@ -291,5 +291,6 @@ function jsonResponse(data, status = 200) {
     }
   });
 }
+
 
 

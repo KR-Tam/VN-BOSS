@@ -132,6 +132,13 @@ async function resolveAdminSecret(env) {
 async function isAdminRequest(request, env) {
   const secret = (await resolveAdminSecret(env)) || '';
   const provided = request.headers.get('X-VN-Boss-Admin-Secret') || '';
+  console.log('[VN Boss Worker] admin auth check:', JSON.stringify({
+    secretType: typeof env.VNBOSS_ADMIN_KEY,
+    secretSet: Boolean(secret),
+    secretLength: secret.length,
+    providedLength: provided.length,
+    match: provided === secret
+  }));
   if (!secret) return false;
   return provided === secret;
 }

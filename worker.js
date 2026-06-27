@@ -44,6 +44,10 @@ async function handleRequest(request, env) {
     return handleAdminRequest(request, env, url);
   }
 
+  if (url.pathname === '/api/member-info' && request.method === 'GET') {
+    return handleMemberInfo(request, env);
+  }
+
   if (url.pathname !== '/api/generate') {
     return jsonResponse({ message: 'Not found' }, 404);
   }
@@ -184,6 +188,23 @@ async function handleAdminRequest(request, env, url) {
   }
 
   return jsonResponse({ message: 'Not found' }, 404);
+}
+
+async function handleMemberInfo(request, env) {
+  const memberState = getMemberState(request);
+  if (memberState.type !== 'free' || !env.USAGE_KV) {
+    return jsonResponse({ firstSeen: null }, 200);
+  }
+  const raw = await env.USAGE_KV.get(`member:${memberState.userId}`);
+  if (!raw) {
+    return jsonResponse({ firstSeen: null }, 200);
+  }
+  try {
+    const record = JSON.parse(raw);
+    return jsonResponse({ firstSeen: record.firstSeen || null }, 200);
+  } catch (error) {
+    return jsonResponse({ firstSeen: null }, 200);
+  }
 }
 
 async function recordMember(env, memberState) {

@@ -327,7 +327,7 @@ function updateMemberUI() {
   if (usageBox) {
     usageBox.textContent = member.type === 'free'
       ? `메시지 작성 사용량: ${used}/${limit}회`
-      : `비회원은 폼 작성만 체험할 수 있습니다 · AI 생성, 복사, Zalo 전송, 저장은 로그인 후 가능합니다.`;
+      : `비회원은 이용할 수 없습니다. 간단한 구글 로그인 후 이용 바랍니다.`;
   }
   if (adminLink) {
     const isAdmin = member.type === 'free' && ADMIN_EMAILS.includes((member.email || '').toLowerCase());
@@ -713,11 +713,35 @@ function copyText(button, text) {
   });
 }
 
+function showGuestExample() {
+  if (isMember()) return;
+  if (targetSelect) targetSelect.value = '홀 직원';
+  const noticeTypeSelect = document.querySelector('#noticeType');
+  if (noticeTypeSelect) noticeTypeSelect.value = '업무 요청';
+  const toneSelect = document.querySelector('#tone');
+  if (toneSelect) toneSelect.value = '강하게';
+  const taskInput = document.querySelector('#task');
+  if (taskInput) taskInput.value = '매장 및 주방 청소를 마치고 사진찍어 보고해주세요.';
+  if (useDeadlineCheck) useDeadlineCheck.checked = true;
+  updateDeadlineVisibility();
+
+  const deadlineKorean = `${todayString()} 18:00`;
+  const [year, month, day] = todayString().split('-');
+  const deadlineVietnamese = `${day}/${month}/${year} 18:00`;
+
+  renderResult({
+    korean: `제목: 청소 업무 요청\n대상: 홀 직원\n핵심 요청: 매장 및 주방 청소를 마치고 사진찍어 보고해주세요.\n유의사항: 청소가 완료된 후 반드시 사진을 제출해야 합니다.\n마감일: ${deadlineKorean}`,
+    vietnamese: `Tiêu đề: Yêu cầu công việc dọn dẹp\nĐối tượng: Nhân viên phục vụ\nNội dung yêu cầu: Vui lòng hoàn thành việc dọn dẹp cửa hàng và bếp, sau đó chụp ảnh gửi lại cho tôi.\nLưu ý: Phải gửi ảnh sau khi hoàn thành việc dọn dẹp.\nThời hạn: ${deadlineVietnamese}`
+  });
+  setStatus('예시 화면입니다. 로그인하면 실제 메시지를 작성할 수 있습니다.');
+}
+
 initFirebaseAuth();
 updateMemberUI();
 if (deadlineDate) deadlineDate.value = todayString();
 if (deadlineTime) deadlineTime.value = '18:00';
 updateDeadlineVisibility();
+showGuestExample();
 if (useDeadlineCheck) useDeadlineCheck.addEventListener('change', updateDeadlineVisibility);
 updateTargetCustomVisibility();
 if (targetSelect) targetSelect.addEventListener('change', updateTargetCustomVisibility);

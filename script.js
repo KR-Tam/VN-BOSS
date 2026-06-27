@@ -177,6 +177,10 @@ function isMobileBrowser() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
 
+function isInAppBrowser() {
+  return /Zalo|KAKAOTALK|FBAN|FBAV|FB_IAB|Instagram|Line\/|NAVER\(/i.test(navigator.userAgent);
+}
+
 function saveFirebaseMember(user) {
   const existing = getMemberState();
   const customName = existing.userId === user.uid && existing.customDisplayName ? existing.customDisplayName : '';
@@ -200,6 +204,15 @@ async function signInWithGoogle() {
       'Firebase 로그인을 불러오지 못했습니다. 잠시 후 다시 시도하거나 관리자에게 문의해주세요.'
     );
     setStatus('Google 로그인 설정을 확인해주세요.', 'warn');
+    return;
+  }
+
+  if (isInAppBrowser()) {
+    openLoginModal(
+      '외부 브라우저에서 로그인해주세요',
+      'Zalo, 카카오톡, 인스타그램 같은 앱 내부 브라우저에서는 Google 로그인이 차단됩니다. 우측 상단 메뉴에서 "다른 브라우저로 열기"를 선택하거나, Chrome/Safari를 열어 주소를 직접 입력해주세요.'
+    );
+    setStatus('앱 내부 브라우저에서는 Google 로그인이 차단됩니다. Chrome/Safari로 열어주세요.', 'warn');
     return;
   }
 

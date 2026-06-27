@@ -12,6 +12,14 @@ const modalLoginButton = document.querySelector('#modalLoginButton');
 const historyList = document.querySelector('#historyList');
 const adminLink = document.querySelector('#adminLink');
 const ADMIN_EMAILS = ['sirisiri1148@gmail.com'];
+const profileModal = document.querySelector('#profileModal');
+const profileModalClose = document.querySelector('#profileModalClose');
+const profileEmail = document.querySelector('#profileEmail');
+const profileJoinedAt = document.querySelector('#profileJoinedAt');
+const profileUsage = document.querySelector('#profileUsage');
+const profileNicknameInput = document.querySelector('#profileNicknameInput');
+const profileSaveButton = document.querySelector('#profileSaveButton');
+const profileLogoutButton = document.querySelector('#profileLogoutButton');
 const loginModalTitle = document.querySelector('#loginModalTitle');
 const loginModalCopy = loginModal ? loginModal.querySelector('p:not(.eyebrow)') : null;
 let firebaseAuth = null;
@@ -147,20 +155,38 @@ function initFirebaseAuth() {
       updateMemberUI();
       closeLoginModal();
     });
+
+    firebaseAuth.getRedirectResult().then((result) => {
+      if (result && result.user) {
+        saveFirebaseMember(result.user);
+        updateMemberUI();
+        setStatus('Google 로그인 완료. 무료 회원 기능을 사용할 수 있습니다.');
+      }
+    }).catch((error) => {
+      console.error('[VN Boss] Redirect sign-in failed:', error);
+    });
   } catch (error) {
     authReady = false;
     console.error('[VN Boss] Firebase init failed:', error);
   }
 }
 
+function isMobileBrowser() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
 function saveFirebaseMember(user) {
+  const existing = getMemberState();
+  const customName = existing.userId === user.uid && existing.customDisplayName ? existing.customDisplayName : '';
   const member = {
     type: 'free',
     userId: user.uid,
-    displayName: user.displayName || user.email || '무료 회원',
+    displayName: customName || user.displayName || user.email || '무료 회원',
+    customDisplayName: customName,
+    googleDisplayName: user.displayName || '',
     email: user.email || '',
     provider: 'firebase-google',
-    joinedAt: new Date().toISOString()
+    joinedAt: existing.userId === user.uid && existing.joinedAt ? existing.joinedAt : new Date().toISOString()
   };
   localStorage.setItem(MEMBER_STORAGE_KEY, JSON.stringify(member));
 }
@@ -175,6 +201,16 @@ async function signInWithGoogle() {
     return;
   }
 
+  if (isMobileBrowser()) {
+    try {
+      await firebaseAuth.signInWithRedirect(firebaseProvider);
+    } catch (error) {
+      console.error('[VN Boss] Google redirect sign-in failed:', error);
+      setStatus('Google 로그인에 실패했습니다. 브라우저 앱(Chrome/Safari)에서 다시 시도해주세요.', 'warn');
+    }
+    return;
+  }
+
   try {
     const result = await firebaseAuth.signInWithPopup(firebaseProvider);
     if (result.user) saveFirebaseMember(result.user);
@@ -186,6 +222,25 @@ async function signInWithGoogle() {
     const canceled = error && (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request');
     setStatus(canceled ? 'Google 로그인이 취소되었습니다.' : 'Google 로그인에 실패했습니다. Firebase 승인 도메인을 확인해주세요.', 'warn');
   }
+}
+
+function signOutMember() {
+  if (firebaseAuth) {
+    firebaseAuth.signOut().catch((error) => console.error('[VN Boss] Sign-out failed:', error));
+  }
+  localStorage.removeItem(MEMBER_STORAGE_KEY);
+  closeProfileModal();
+  updateMemberUI();
+  setStatus('로그아웃되었습니다.');
+}
+
+function saveCustomDisplayName(name) {
+  const member = getMemberState();
+  if (member.type !== 'free') return;
+  member.customDisplayName = name.trim();
+  member.displayName = member.customDisplayName || member.googleDisplayName || member.email || '무료 회원';
+  localStorage.setItem(MEMBER_STORAGE_KEY, JSON.stringify(member));
+  updateMemberUI();
 }
 function startGoogleSignup() {
   const config = window.VN_BOSS_CONFIG || {};
@@ -218,6 +273,27 @@ function closeLoginModal() {
   loginModal.setAttribute('aria-hidden', 'true');
   if (loginModalTitle) loginModalTitle.textContent = '결과 활용은 로그인 후 가능합니다';
   if (loginModalCopy) loginModalCopy.textContent = 'Google로 시작하면 복사, Zalo 전송, 템플릿 저장, 최근 기록을 바로 사용할 수 있습니다.';
+}
+
+function openProfileModal() {
+  if (!profileModal || !isMember()) return;
+  const member = getMemberState();
+  if (profileEmail) profileEmail.textContent = member.email || '-';
+  if (profileJoinedAt) {
+    profileJoinedAt.textContent = member.joinedAt
+      ? new Date(member.joinedAt).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+      : '-';
+  }
+  if (profileUsage) profileUsage.textContent = `${getCurrentUsageCount()}/${getCurrentLimit()}회`;
+  if (profileNicknameInput) profileNicknameInput.value = member.customDisplayName || '';
+  profileModal.classList.add('show');
+  profileModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeProfileModal() {
+  if (!profileModal) return;
+  profileModal.classList.remove('show');
+  profileModal.setAttribute('aria-hidden', 'true');
 }
 
 function updateMemberUI() {
@@ -647,6 +723,20 @@ if (modalClose) modalClose.addEventListener('click', closeLoginModal);
 if (loginModal) loginModal.addEventListener('click', (event) => {
   if (event.target === loginModal) closeLoginModal();
 });
+if (memberPill) memberPill.addEventListener('click', () => {
+  if (isMember()) openProfileModal();
+  else openLoginModal('로그인 후 내 정보를 확인할 수 있습니다');
+});
+if (profileModalClose) profileModalClose.addEventListener('click', closeProfileModal);
+if (profileModal) profileModal.addEventListener('click', (event) => {
+  if (event.target === profileModal) closeProfileModal();
+});
+if (profileSaveButton) profileSaveButton.addEventListener('click', () => {
+  saveCustomDisplayName(profileNicknameInput ? profileNicknameInput.value : '');
+  setStatus('표시 이름이 저장되었습니다.');
+  closeProfileModal();
+});
+if (profileLogoutButton) profileLogoutButton.addEventListener('click', signOutMember);
 if (historyList) historyList.addEventListener('click', (event) => {
   const itemButton = event.target.closest('[data-history-id]');
   if (!itemButton) return;

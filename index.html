@@ -13,7 +13,7 @@
       <div class="nav-links"><a href="#home">홈</a><a href="#workspace">메시지 작성</a><a href="#memberBenefits">회원 혜택</a></div>
       <div class="auth-actions">
         <a href="admin.html" id="adminLink" style="display:none;">관리자</a>
-        <span class="member-pill" id="memberPill">비회원</span>
+        <button class="member-pill" id="memberPill" type="button">비회원</button>
         <button class="auth-button" id="authButton" type="button">Google로 시작</button>
       </div>
     </nav>
@@ -120,6 +120,22 @@
       <h2 id="loginModalTitle">결과 활용은 로그인 후 가능합니다</h2>
       <p>Google로 시작하면 복사, Zalo 전송, 템플릿 저장, 최근 기록을 바로 사용할 수 있습니다.</p>
       <button class="google-button" id="modalLoginButton" type="button">Google로 무료 시작</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="profileModal" aria-hidden="true">
+    <div class="login-modal" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle">
+      <button class="modal-close" id="profileModalClose" type="button" aria-label="닫기">×</button>
+      <p class="eyebrow">내 정보</p>
+      <h2 id="profileModalTitle">회원 정보</h2>
+      <p class="profile-row"><span>이메일</span><strong id="profileEmail">-</strong></p>
+      <p class="profile-row"><span>가입일</span><strong id="profileJoinedAt">-</strong></p>
+      <p class="profile-row"><span>오늘 사용량</span><strong id="profileUsage">-</strong></p>
+      <label class="profile-nickname"><span>표시 이름</span><input id="profileNicknameInput" type="text" placeholder="닉네임을 입력하세요" maxlength="40"></label>
+      <div class="profile-actions">
+        <button class="auth-button" id="profileSaveButton" type="button">저장</button>
+        <button class="secondary-link" id="profileLogoutButton" type="button">로그아웃</button>
+      </div>
     </div>
   </div>
 

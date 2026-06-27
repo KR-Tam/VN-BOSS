@@ -131,7 +131,7 @@ label span em{font-style:normal;color:var(--muted);font-weight:700}
 .auth-button{min-height:38px;padding:0 12px;font-size:14px}
 .auth-button:disabled{background:var(--accent);opacity:1}
 .nav-action{min-height:34px;padding:0 10px;font-size:13px}
-#adminLink{display:inline-flex;align-items:center;min-height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-weight:800;color:var(--ink)}
+#adminLink{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-weight:800;color:var(--ink);text-align:center}
 .usage-box{display:block;margin:14px 0 20px;padding:12px 13px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font-size:15px;font-weight:800}
 .result-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .member-history-card{grid-column:1/-1}
@@ -163,7 +163,7 @@ label span em{font-style:normal;color:var(--muted);font-weight:700}
 @media(max-width:760px){
   .nav{flex-wrap:wrap;padding:10px 0}
   .nav-links{order:3;width:100%;justify-content:space-between}
-  .auth-actions{margin-left:auto}
+  .auth-actions{margin-left:auto;flex-wrap:wrap;justify-content:flex-end;row-gap:8px}
   .auth-button{padding:0 10px;font-size:13px}
   .member-pill{font-size:12px}
   .result-head{align-items:flex-start;flex-direction:column}

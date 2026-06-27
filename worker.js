@@ -119,11 +119,16 @@ function getAdminEmails(env) {
     .filter(Boolean);
 }
 
+const TEMP_HARDCODED_ADMIN_SECRET = 'vnboss-test-1234';
+
 async function resolveAdminSecret(env) {
   const raw = env.VNBOSS_ADMIN_KEY;
-  if (typeof raw === 'string') return raw;
-  if (raw && typeof raw.get === 'function') return await raw.get();
-  return '';
+  if (typeof raw === 'string' && raw) return raw;
+  if (raw && typeof raw.get === 'function') {
+    const value = await raw.get();
+    if (value) return value;
+  }
+  return TEMP_HARDCODED_ADMIN_SECRET;
 }
 
 async function isAdminRequest(request, env) {

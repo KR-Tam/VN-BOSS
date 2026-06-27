@@ -313,7 +313,7 @@ function updateMemberUI() {
   if (logoutButton) logoutButton.style.display = isFreeMember ? '' : 'none';
   if (usageBox) {
     usageBox.textContent = member.type === 'free'
-      ? `무료 회원 AI 사용량: ${used}/${limit}회`
+      ? `메시지 작성 사용량: ${used}/${limit}회`
       : `비회원은 폼 작성만 체험할 수 있습니다 · AI 생성, 복사, Zalo 전송, 저장은 로그인 후 가능합니다.`;
   }
   if (adminLink) {

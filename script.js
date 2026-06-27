@@ -224,11 +224,7 @@ async function signInWithGoogle() {
   }
 
   try {
-    if (isMobileDevice()) {
-      await firebaseAuth.signInWithRedirect(firebaseProvider);
-      return;
-    }
-
+    setStatus('Google 로그인 창을 여는 중입니다.');
     const result = await firebaseAuth.signInWithPopup(firebaseProvider);
     if (result.user) saveFirebaseMember(result.user);
     updateMemberUI();
@@ -237,7 +233,7 @@ async function signInWithGoogle() {
   } catch (error) {
     console.error('[VN Boss] Google sign-in failed:', error);
     const canceled = error && (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request');
-    const blocked = error && (error.code === 'auth/operation-not-supported-in-this-environment' || error.code === 'auth/web-storage-unsupported');
+    const blocked = error && (error.code === 'auth/operation-not-supported-in-this-environment' || error.code === 'auth/web-storage-unsupported' || error.code === 'auth/popup-blocked');
     if (blocked) {
       showSecureBrowserLoginGuide();
       return;
@@ -839,6 +835,7 @@ window.VNBossPromptBuilder = {
   callGemini,
   requestGeminiWithModelFallback
 };
+
 
 
 

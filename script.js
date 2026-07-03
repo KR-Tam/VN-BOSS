@@ -163,16 +163,7 @@ function initFirebaseAuth() {
       closeLoginModal();
     });
 
-    firebaseAuth.getRedirectResult().then((result) => {
-      if (!result || !result.user) return;
-      saveFirebaseMember(result.user);
-      updateMemberUI();
-      closeLoginModal();
-      setStatus('Google 로그인 완료. 무료 회원 기능을 사용할 수 있습니다.');
-    }).catch((error) => {
-      console.error('[VN Boss] Google redirect sign-in failed:', error);
-      if (error && error.code === 'auth/operation-not-supported-in-this-environment') showSecureBrowserLoginGuide();
-    });
+
   } catch (error) {
     authReady = false;
     console.error('[VN Boss] Firebase init failed:', error);
@@ -228,13 +219,8 @@ async function signInWithGoogle() {
   }
 
   try {
-    setStatus('Google 로그인으로 이동합니다.');
+    setStatus('Google 로그인 창이 열립니다.');
     if (modalLoginButton) modalLoginButton.textContent = '이동 중...';
-
-    if (isMobileDevice()) {
-      await firebaseAuth.signInWithRedirect(firebaseProvider);
-      return;
-    }
 
     const result = await firebaseAuth.signInWithPopup(firebaseProvider);
     if (result.user) saveFirebaseMember(result.user);

@@ -34,9 +34,8 @@
     <div id="adminGate" class="admin-gate">
       <p class="eyebrow">관리자 전용</p>
       <h1>관리자 인증</h1>
-      <p>Cloudflare Worker에 설정한 ADMIN_SECRET 값을 입력하세요.</p>
-      <input id="adminSecretInput" type="password" placeholder="관리자 비밀키" autocomplete="off">
-      <button class="auth-button" id="adminLoginButton" type="button">입장</button>
+      <p>관리자 Google 계정으로 로그인하세요. 등록된 관리자 이메일만 입장할 수 있습니다.</p>
+      <button class="auth-button" id="adminLoginButton" type="button">Google로 로그인</button>
       <p id="adminGateStatus" class="admin-meta"></p>
     </div>
 
@@ -61,7 +60,9 @@
     </div>
   </main>
 
-  <script src="config.js"></script>
-  <script src="admin.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="config.js?v=20260703a"></script>
+  <script src="admin.js?v=20260703a"></script>
 </body>
 </html>

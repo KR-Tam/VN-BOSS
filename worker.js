@@ -4,6 +4,13 @@ const DEFAULT_AI_GATEWAY_ACCOUNT_ID = 'bd0c3fba48bff8f5bec8f88cd625c719';
 const DEFAULT_AI_GATEWAY_ID = 'vnboss-gateway';
 const OPENAI_TIMEOUT_MS = 45000;
 
+// Admin access is gated on a verified Firebase Google login, not a shared secret.
+const FIREBASE_PROJECT_ID = 'vn-boss';
+const ADMIN_EMAILS = ['sirisiri1148@gmail.com'];
+const FIREBASE_JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
+let cachedFirebaseJwks = null;
+let cachedFirebaseJwksExpiry = 0;
+
 const DAILY_LIMITS = {
   guest: 0,
   free: 10
@@ -12,7 +19,7 @@ const DAILY_LIMITS = {
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-VN-Boss-Member-State, X-VN-Boss-User-Id, X-VN-Boss-Email, X-VN-Boss-Display-Name, X-VN-Boss-Admin-Secret',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-VN-Boss-Member-State, X-VN-Boss-User-Id, X-VN-Boss-Email, X-VN-Boss-Display-Name, X-VN-Boss-Admin-Secret',
   'Access-Control-Max-Age': '86400'
 };
 
@@ -117,34 +124,116 @@ async function handleRequest(request, env) {
 }
 
 function getAdminEmails(env) {
-  return (env.ADMIN_EMAILS || '')
+  const fromEnv = (env.ADMIN_EMAILS || '')
     .split(',')
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
+  return fromEnv.length ? fromEnv : ADMIN_EMAILS.map((value) => value.toLowerCase());
 }
 
-async function resolveAdminSecret(env) {
-  const raw = env.VNBOSS_ADMIN_KEY;
-  if (typeof raw === 'string' && raw) return raw;
-  if (raw && typeof raw.get === 'function') {
-    const value = await raw.get();
-    if (value) return value;
+function base64UrlToBytes(value) {
+  let normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = normalized.length % 4;
+  if (pad) normalized += '='.repeat(4 - pad);
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function base64UrlToString(value) {
+  return new TextDecoder().decode(base64UrlToBytes(value));
+}
+
+async function getFirebaseJwks() {
+  const now = Date.now();
+  if (cachedFirebaseJwks && now < cachedFirebaseJwksExpiry) return cachedFirebaseJwks;
+  const response = await fetch(FIREBASE_JWK_URL);
+  if (!response.ok) throw new Error('Failed to fetch Firebase public keys');
+  const data = await response.json();
+  const map = {};
+  for (const key of data.keys || []) map[key.kid] = key;
+  cachedFirebaseJwks = map;
+  cachedFirebaseJwksExpiry = now + 60 * 60 * 1000;
+  return map;
+}
+
+async function verifyFirebaseIdToken(token) {
+  const parts = (token || '').split('.');
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, signatureB64] = parts;
+
+  let header;
+  let payload;
+  try {
+    header = JSON.parse(base64UrlToString(headerB64));
+    payload = JSON.parse(base64UrlToString(payloadB64));
+  } catch (error) {
+    return null;
   }
-  return '';
+
+  if (header.alg !== 'RS256' || !header.kid) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.aud !== FIREBASE_PROJECT_ID) return null;
+  if (payload.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`) return null;
+  if (!payload.exp || payload.exp < now) return null;
+  if (payload.iat && payload.iat > now + 300) return null;
+  if (!payload.sub) return null;
+
+  let jwks;
+  try {
+    jwks = await getFirebaseJwks();
+  } catch (error) {
+    console.error('[VN Boss Worker] JWK fetch failed:', error);
+    return null;
+  }
+  const jwk = jwks[header.kid];
+  if (!jwk) return null;
+
+  let key;
+  try {
+    key = await crypto.subtle.importKey(
+      'jwk',
+      { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true },
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+  } catch (error) {
+    console.error('[VN Boss Worker] importKey failed:', error);
+    return null;
+  }
+
+  const signature = base64UrlToBytes(signatureB64);
+  const signedData = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+  let valid = false;
+  try {
+    valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, signature, signedData);
+  } catch (error) {
+    return null;
+  }
+  return valid ? payload : null;
 }
 
 async function isAdminRequest(request, env) {
-  const secret = (await resolveAdminSecret(env)) || '';
-  const provided = request.headers.get('X-VN-Boss-Admin-Secret') || '';
-  console.log('[VN Boss Worker] admin auth check:', JSON.stringify({
-    secretType: typeof env.VNBOSS_ADMIN_KEY,
-    secretSet: Boolean(secret),
-    secretLength: secret.length,
-    providedLength: provided.length,
-    match: provided === secret
-  }));
-  if (!secret) return false;
-  return provided === secret;
+  const authHeader = request.headers.get('Authorization') || '';
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    console.log('[VN Boss Worker] admin auth: no bearer token');
+    return false;
+  }
+
+  const payload = await verifyFirebaseIdToken(match[1].trim());
+  if (!payload) {
+    console.log('[VN Boss Worker] admin auth: token verification failed');
+    return false;
+  }
+
+  const email = (payload.email || '').toLowerCase();
+  const allowed = getAdminEmails(env).includes(email) && payload.email_verified !== false;
+  console.log('[VN Boss Worker] admin auth check:', JSON.stringify({ email, allowed }));
+  return allowed;
 }
 
 async function handleAdminRequest(request, env, url) {

@@ -1,8 +1,7 @@
-const ADMIN_SECRET_STORAGE_KEY = 'vnBossAdminSecret';
+const ADMIN_EMAILS = ['sirisiri1148@gmail.com'];
 
 const adminGate = document.querySelector('#adminGate');
 const adminDashboard = document.querySelector('#adminDashboard');
-const adminSecretInput = document.querySelector('#adminSecretInput');
 const adminLoginButton = document.querySelector('#adminLoginButton');
 const adminGateStatus = document.querySelector('#adminGateStatus');
 const adminLogoutButton = document.querySelector('#adminLogoutButton');
@@ -10,6 +9,9 @@ const membersTableWrap = document.querySelector('#membersTableWrap');
 const errorsTableWrap = document.querySelector('#errorsTableWrap');
 const refreshMembersButton = document.querySelector('#refreshMembers');
 const refreshErrorsButton = document.querySelector('#refreshErrors');
+
+let firebaseAuth = null;
+let firebaseProvider = null;
 
 function getApiBase() {
   const config = window.VN_BOSS_CONFIG || {};
@@ -19,24 +21,45 @@ function getApiBase() {
   return endpoint.replace(/\/api\/generate$/, '');
 }
 
-function getAdminSecret() {
-  return localStorage.getItem(ADMIN_SECRET_STORAGE_KEY) || '';
+function initFirebase() {
+  const config = window.VN_BOSS_CONFIG || {};
+  if (!window.firebase || !config.FIREBASE_CONFIG) {
+    if (adminGateStatus) adminGateStatus.textContent = '로그인 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.';
+    return;
+  }
+  const existingApps = firebase.apps || [];
+  if (!existingApps.length) firebase.initializeApp(config.FIREBASE_CONFIG);
+  firebaseAuth = firebase.auth();
+  firebaseProvider = new firebase.auth.GoogleAuthProvider();
+  firebaseProvider.setCustomParameters({ prompt: 'select_account' });
+
+  firebaseAuth.onAuthStateChanged((user) => {
+    if (user && ADMIN_EMAILS.includes((user.email || '').toLowerCase())) {
+      showDashboard();
+    } else if (user) {
+      showGate('관리자 권한이 없는 계정입니다.');
+    } else {
+      showGate();
+    }
+  });
 }
 
-function setAdminSecret(secret) {
-  localStorage.setItem(ADMIN_SECRET_STORAGE_KEY, secret);
-}
-
-function clearAdminSecret() {
-  localStorage.removeItem(ADMIN_SECRET_STORAGE_KEY);
+async function getIdToken() {
+  if (!firebaseAuth || !firebaseAuth.currentUser) return '';
+  try {
+    return await firebaseAuth.currentUser.getIdToken();
+  } catch (error) {
+    return '';
+  }
 }
 
 async function adminFetch(path, options = {}) {
+  const token = await getIdToken();
   const response = await fetch(`${getApiBase()}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'X-VN-Boss-Admin-Secret': getAdminSecret(),
+      'Authorization': `Bearer ${token}`,
       ...(options.headers || {})
     }
   });
@@ -52,6 +75,7 @@ async function adminFetch(path, options = {}) {
 }
 
 function showDashboard() {
+  if (adminGateStatus) adminGateStatus.textContent = '';
   adminGate.style.display = 'none';
   adminDashboard.style.display = 'block';
   loadMembers();
@@ -61,7 +85,7 @@ function showDashboard() {
 function showGate(message) {
   adminGate.style.display = 'block';
   adminDashboard.style.display = 'none';
-  if (adminGateStatus) adminGateStatus.textContent = message || '';
+  if (typeof message === 'string' && adminGateStatus) adminGateStatus.textContent = message;
 }
 
 function formatDate(value) {
@@ -80,8 +104,7 @@ async function loadMembers() {
     renderMembers(data.members || []);
   } catch (error) {
     if (error.message === 'UNAUTHORIZED') {
-      clearAdminSecret();
-      showGate('인증이 만료되었습니다. 다시 입력해주세요.');
+      showGate('관리자 인증이 만료되었습니다. 다시 로그인해주세요.');
       return;
     }
     membersTableWrap.innerHTML = `<p class="admin-empty">불러오기 실패: ${error.message}</p>`;
@@ -144,8 +167,7 @@ async function loadErrors() {
     renderErrors(data.errors || []);
   } catch (error) {
     if (error.message === 'UNAUTHORIZED') {
-      clearAdminSecret();
-      showGate('인증이 만료되었습니다. 다시 입력해주세요.');
+      showGate('관리자 인증이 만료되었습니다. 다시 로그인해주세요.');
       return;
     }
     errorsTableWrap.innerHTML = `<p class="admin-empty">불러오기 실패: ${error.message}</p>`;
@@ -177,32 +199,34 @@ function renderErrors(errors) {
 }
 
 adminLoginButton.addEventListener('click', async () => {
-  const secret = adminSecretInput.value.trim();
-  if (!secret) {
-    adminGateStatus.textContent = '비밀키를 입력해주세요.';
+  if (!firebaseAuth || !firebaseProvider) {
+    adminGateStatus.textContent = '로그인 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.';
     return;
   }
-  setAdminSecret(secret);
+  adminGateStatus.textContent = 'Google 로그인 창이 열립니다.';
   try {
-    await adminFetch('/api/admin/members');
-    showDashboard();
+    const result = await firebaseAuth.signInWithPopup(firebaseProvider);
+    const email = ((result.user && result.user.email) || '').toLowerCase();
+    if (!ADMIN_EMAILS.includes(email)) {
+      adminGateStatus.textContent = '관리자 권한이 없는 계정입니다.';
+      await firebaseAuth.signOut();
+      return;
+    }
+    // onAuthStateChanged will show the dashboard.
   } catch (error) {
-    clearAdminSecret();
-    adminGateStatus.textContent = error.message === 'UNAUTHORIZED' ? '비밀키가 올바르지 않습니다.' : `연결 실패: ${error.message}`;
+    const canceled = error && (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request');
+    adminGateStatus.textContent = canceled ? '로그인이 취소되었습니다.' : '로그인에 실패했습니다. 다시 시도해주세요.';
   }
 });
 
-adminLogoutButton.addEventListener('click', () => {
-  clearAdminSecret();
+adminLogoutButton.addEventListener('click', async () => {
+  if (firebaseAuth) {
+    try { await firebaseAuth.signOut(); } catch (error) {}
+  }
   showGate('');
 });
 
 refreshMembersButton.addEventListener('click', loadMembers);
 refreshErrorsButton.addEventListener('click', loadErrors);
 
-if (getAdminSecret()) {
-  adminFetch('/api/admin/members').then(() => showDashboard()).catch(() => {
-    clearAdminSecret();
-    showGate('');
-  });
-}
+initFirebase();

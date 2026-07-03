@@ -27,6 +27,15 @@ const historyManageButton = document.querySelector('#historyManageButton');
 const historyModal = document.querySelector('#historyModal');
 const historyModalClose = document.querySelector('#historyModalClose');
 const historyModalList = document.querySelector('#historyModalList');
+const installFab = document.querySelector('#installFab');
+const installFabClose = document.querySelector('#installFabClose');
+const installModal = document.querySelector('#installModal');
+const installModalClose = document.querySelector('#installModalClose');
+const installModalDesc = document.querySelector('#installModalDesc');
+const installSteps = document.querySelector('#installSteps');
+const installConfirmButton = document.querySelector('#installConfirmButton');
+let deferredInstallPrompt = null;
+const INSTALL_DISMISS_KEY = 'vnBossInstallDismissed';
 const loginModalTitle = document.querySelector('#loginModalTitle');
 const loginModalCopy = loginModal ? loginModal.querySelector('p:not(.eyebrow)') : null;
 let firebaseAuth = null;
@@ -882,6 +891,132 @@ function handleHistoryItemClick(event) {
 }
 if (historyList) historyList.addEventListener('click', handleHistoryItemClick);
 if (historyModalList) historyModalList.addEventListener('click', handleHistoryItemClick);
+
+function isStandaloneMode() {
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+}
+
+function isIOSDevice() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+}
+
+function installDismissedThisSession() {
+  try {
+    return sessionStorage.getItem(INSTALL_DISMISS_KEY) === '1';
+  } catch (error) {
+    return false;
+  }
+}
+
+function hideInstallFab() {
+  if (installFab) installFab.style.display = 'none';
+}
+
+function maybeShowInstallFab() {
+  if (!installFab) return;
+  if (isStandaloneMode() || installDismissedThisSession()) {
+    hideInstallFab();
+    return;
+  }
+  const canPrompt = Boolean(deferredInstallPrompt);
+  const iosSafari = isIOSDevice() && !isLikelyInAppBrowser();
+  installFab.style.display = (canPrompt || iosSafari) ? 'inline-flex' : 'none';
+}
+
+function dismissInstallFab() {
+  try {
+    sessionStorage.setItem(INSTALL_DISMISS_KEY, '1');
+  } catch (error) {}
+  hideInstallFab();
+}
+
+function buildInstallSteps() {
+  if (!installSteps || !installConfirmButton || !installModalDesc) return;
+  if (deferredInstallPrompt) {
+    installModalDesc.textContent = '아래 버튼을 누르면 바탕화면(또는 홈 화면)에 바로가기가 추가됩니다.';
+    installSteps.innerHTML = '';
+    installConfirmButton.style.display = 'block';
+  } else if (isIOSDevice()) {
+    installModalDesc.textContent = 'Safari 하단 공유 메뉴로 홈 화면에 추가할 수 있습니다.';
+    installSteps.innerHTML = '<li>하단의 <strong>공유</strong> 버튼(네모+위 화살표)을 누르세요.</li>'
+      + '<li><strong>홈 화면에 추가</strong>를 선택하세요.</li>'
+      + '<li>오른쪽 위 <strong>추가</strong>를 누르면 완료됩니다.</li>';
+    installConfirmButton.style.display = 'none';
+  } else {
+    installModalDesc.textContent = '브라우저 메뉴에서 “설치” 또는 “홈 화면에 추가”를 선택하세요.';
+    installSteps.innerHTML = '<li>주소창 오른쪽의 <strong>설치</strong> 아이콘, 또는 메뉴(⋮)를 누르세요.</li>'
+      + '<li><strong>앱 설치</strong> 또는 <strong>바로가기 만들기</strong>를 선택하세요.</li>';
+    installConfirmButton.style.display = 'none';
+  }
+}
+
+function openInstallModal() {
+  if (!installModal) return;
+  buildInstallSteps();
+  installModal.classList.add('show');
+  installModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeInstallModal() {
+  if (!installModal) return;
+  installModal.classList.remove('show');
+  installModal.setAttribute('aria-hidden', 'true');
+}
+
+async function triggerNativeInstall() {
+  if (!deferredInstallPrompt) {
+    openInstallModal();
+    return;
+  }
+  const promptEvent = deferredInstallPrompt;
+  deferredInstallPrompt = null;
+  try {
+    promptEvent.prompt();
+    await promptEvent.userChoice;
+  } catch (error) {}
+  hideInstallFab();
+  closeInstallModal();
+}
+
+function handleInstallFabClick() {
+  if (deferredInstallPrompt) {
+    triggerNativeInstall();
+  } else {
+    openInstallModal();
+  }
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  maybeShowInstallFab();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  hideInstallFab();
+  closeInstallModal();
+  setStatus('바로가기가 추가되었습니다. 이제 아이콘으로 바로 접속할 수 있습니다.');
+});
+
+if (installFab) installFab.addEventListener('click', handleInstallFabClick);
+if (installFabClose) installFabClose.addEventListener('click', (event) => {
+  event.stopPropagation();
+  dismissInstallFab();
+});
+if (installModalClose) installModalClose.addEventListener('click', closeInstallModal);
+if (installModal) installModal.addEventListener('click', (event) => {
+  if (event.target === installModal) closeInstallModal();
+});
+if (installConfirmButton) installConfirmButton.addEventListener('click', triggerNativeInstall);
+
+maybeShowInstallFab();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch((error) => console.error('[VN Boss] SW register failed:', error));
+  });
+}
 
 window.VNBossPromptBuilder = {
   getNoticeInputs,

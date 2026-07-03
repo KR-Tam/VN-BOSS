@@ -1,0 +1,26 @@
+{
+  "name": "VN Boss - 베트남 직원 메시지 작성",
+  "short_name": "VN Boss",
+  "description": "한국 사장님을 위한 베트남어 업무 메시지 작성 도우미",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f7f4",
+  "theme_color": "#087f6f",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

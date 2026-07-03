@@ -191,3 +191,15 @@ label span em{font-style:normal;color:var(--muted);font-weight:700}
   .deadline-grid input[type="time"]{width:100%;min-height:58px;padding-left:16px;padding-right:16px;font-size:18px;line-height:1.2}
 }
 
+.install-fab{position:fixed;right:16px;bottom:16px;z-index:35;display:inline-flex;align-items:center;gap:8px;padding:0 12px 0 16px;height:48px;border:0;border-radius:999px;background:var(--accent);color:#fff;font-weight:800;font-size:14px;box-shadow:var(--shadow);cursor:pointer}
+.install-fab:hover{background:var(--accent-dark)}
+.install-fab-icon{font-size:18px;line-height:1}
+.install-fab-close{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-left:2px;border-radius:50%;background:rgba(255,255,255,.22);color:#fff;font-size:16px;line-height:1}
+.install-fab-close:hover{background:rgba(255,255,255,.34)}
+.install-steps{margin:6px 0 18px;padding-left:20px;color:var(--ink);font-size:15px;line-height:1.7}
+.install-steps li{margin:0 0 8px}
+.install-steps li strong{color:var(--accent)}
+@media(max-width:430px){
+  .install-fab{right:12px;bottom:12px;height:46px;font-size:13px}
+}
+

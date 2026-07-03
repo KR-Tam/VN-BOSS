@@ -55,6 +55,10 @@ async function handleRequest(request, env) {
     return handleMemberInfo(request, env);
   }
 
+  if (url.pathname === '/api/member-register' && request.method === 'POST') {
+    return handleMemberRegister(request, env);
+  }
+
   if (url.pathname !== '/api/generate') {
     return jsonResponse({ message: 'Not found' }, 404);
   }
@@ -296,8 +300,18 @@ async function handleMemberInfo(request, env) {
   }
 }
 
-async function recordMember(env, memberState) {
+async function handleMemberRegister(request, env) {
+  const memberState = getMemberState(request);
+  if (memberState.type !== 'free' || memberState.userId === 'anonymous') {
+    return jsonResponse({ ok: false }, 200);
+  }
+  await recordMember(env, memberState, { countRequest: false });
+  return jsonResponse({ ok: true }, 200);
+}
+
+async function recordMember(env, memberState, options = {}) {
   if (!env.USAGE_KV || memberState.type !== 'free') return;
+  const countRequest = options.countRequest !== false;
   const key = `member:${memberState.userId}`;
   const now = new Date().toISOString();
   let existing = null;
@@ -314,7 +328,7 @@ async function recordMember(env, memberState) {
     displayName: memberState.displayName || existing?.displayName || '',
     firstSeen: existing?.firstSeen || now,
     lastSeen: now,
-    totalRequests: (existing?.totalRequests || 0) + 1
+    totalRequests: (existing?.totalRequests || 0) + (countRequest ? 1 : 0)
   };
 
   await env.USAGE_KV.put(key, JSON.stringify(record));

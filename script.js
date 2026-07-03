@@ -161,6 +161,7 @@ function initFirebaseAuth() {
       saveFirebaseMember(user);
       updateMemberUI();
       closeLoginModal();
+      registerMemberOnServer();
     });
 
 
@@ -184,6 +185,27 @@ function saveFirebaseMember(user) {
     joinedAt: existing.userId === user.uid && existing.joinedAt ? existing.joinedAt : new Date().toISOString()
   };
   localStorage.setItem(MEMBER_STORAGE_KEY, JSON.stringify(member));
+}
+
+async function registerMemberOnServer() {
+  const member = getMemberState();
+  if (member.type !== 'free' || !member.userId) return;
+  try {
+    const status = getConfigStatus();
+    const base = status.endpoint.replace(/\/api\/generate$/, '');
+    await fetch(`${base}/api/member-register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-VN-Boss-Member-State': member.type,
+        'X-VN-Boss-User-Id': member.userId,
+        'X-VN-Boss-Email': member.email || '',
+        'X-VN-Boss-Display-Name': member.displayName || ''
+      }
+    });
+  } catch (error) {
+    console.error('[VN Boss] Member register failed:', error);
+  }
 }
 function isMobileDevice() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');

@@ -37,6 +37,14 @@ export default {
         code: 'WORKER_UNHANDLED_ERROR'
       }, 500);
     }
+  },
+
+  async scheduled(event, env, ctx) {
+    // Runs on the configured cron trigger (Vietnam 07:00 = 00:00 UTC).
+    // Generates news drafts only; publishing stays a manual admin approval.
+    ctx.waitUntil(
+      generateNewsDrafts(env).catch((error) => console.error('[VN Boss Worker] news cron failed:', error))
+    );
   }
 };
 
@@ -57,6 +65,11 @@ async function handleRequest(request, env) {
 
   if (url.pathname === '/api/member-register' && request.method === 'POST') {
     return handleMemberRegister(request, env);
+  }
+
+  if (url.pathname === '/api/news' && request.method === 'GET') {
+    const news = await getNewsList(env, 'news:published');
+    return jsonResponse({ news: news.slice(0, 20) }, 200);
   }
 
   if (url.pathname !== '/api/generate') {
@@ -278,6 +291,46 @@ async function handleAdminRequest(request, env, url) {
     const key = `usage:${getQuotaDate()}:${memberType}:${userId}`;
     await env.USAGE_KV.delete(key);
     return jsonResponse({ message: '사용량이 초기화되었습니다.' }, 200);
+  }
+
+  if (url.pathname === '/api/admin/news-drafts' && request.method === 'GET') {
+    const drafts = await getNewsList(env, 'news:drafts');
+    const published = await getNewsList(env, 'news:published');
+    return jsonResponse({ drafts, published }, 200);
+  }
+
+  if (url.pathname === '/api/admin/news-generate' && request.method === 'POST') {
+    const result = await generateNewsDrafts(env);
+    return jsonResponse(result, 200);
+  }
+
+  if (url.pathname === '/api/admin/news-publish' && request.method === 'POST') {
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return jsonResponse({ message: '요청 내용을 확인해주세요.', userFriendly: true }, 400);
+    }
+    const id = typeof body.id === 'string' ? body.id : '';
+    if (!id) return jsonResponse({ message: 'id가 필요합니다.', userFriendly: true }, 400);
+    const result = await publishNewsDraft(env, id, body.edited);
+    return jsonResponse(result, result.ok ? 200 : 404);
+  }
+
+  if (url.pathname === '/api/admin/news-reject' && request.method === 'POST') {
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return jsonResponse({ message: '요청 내용을 확인해주세요.', userFriendly: true }, 400);
+    }
+    const id = typeof body.id === 'string' ? body.id : '';
+    const target = body.target === 'published' ? 'news:published' : 'news:drafts';
+    if (!id) return jsonResponse({ message: 'id가 필요합니다.', userFriendly: true }, 400);
+    const list = await getNewsList(env, target);
+    const next = list.filter((item) => item.id !== id);
+    await env.USAGE_KV.put(target, JSON.stringify(next));
+    return jsonResponse({ ok: true, removed: list.length - next.length }, 200);
   }
 
   return jsonResponse({ message: 'Not found' }, 404);
@@ -546,6 +599,247 @@ function jsonResponse(data, status = 200) {
       'Content-Type': 'application/json; charset=utf-8'
     }
   });
+}
+
+/* =========================================================================
+ * Vietnam news feature
+ * - Cron generates Korean-summarized drafts from 3 outlets' business RSS.
+ * - Drafts require manual admin approval before appearing on the site.
+ * ========================================================================= */
+
+const NEWS_SOURCES = [
+  { name: 'VnExpress', url: 'https://vnexpress.net/rss/kinh-doanh.rss' },
+  { name: 'Tuoi Tre', url: 'https://tuoitre.vn/rss/kinh-doanh.rss' },
+  { name: 'Thanh Nien', url: 'https://thanhnien.vn/rss/kinh-te.rss' }
+];
+
+// F&B and policy keywords (lowercase, Vietnamese). Matched against title+description.
+const NEWS_KEYWORDS = [
+  'nhà hàng', 'quán ăn', 'quán cà phê', 'cà phê', 'ẩm thực', 'thực phẩm', 'đồ uống',
+  'đồ ăn', 'ăn uống', 'nhà hàng', 'bếp', 'f&b', 'đồ ăn nhanh', 'chuỗi',
+  'chính sách', 'quy định', 'nghị định', 'thông tư', 'luật', 'thuế', 'giấy phép',
+  'lương tối thiểu', 'an toàn thực phẩm', 'vệ sinh', 'lao động', 'doanh nghiệp nhỏ'
+];
+
+const NEWS_MAX_DRAFTS = 30;
+const NEWS_MAX_PUBLISHED = 30;
+const NEWS_MAX_SEEN = 250;
+
+async function getNewsList(env, key) {
+  if (!env.USAGE_KV) return [];
+  try {
+    const raw = await env.USAGE_KV.get(key);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function newsId() {
+  return `n${Date.now()}${Math.floor(Math.random() * 1000)}`;
+}
+
+function stripCdata(value) {
+  return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+}
+
+function decodeXmlEntities(value) {
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function stripHtml(value) {
+  return stripCdata(value).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function extractRssTag(block, tag) {
+  const match = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+  if (!match) return '';
+  return decodeXmlEntities(stripCdata(match[1]).trim());
+}
+
+function parseRssItems(xml, sourceName) {
+  const items = [];
+  const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/gi;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const block = match[1];
+    const title = extractRssTag(block, 'title');
+    const link = extractRssTag(block, 'link');
+    const descriptionRaw = extractRssTag(block, 'description');
+    const pubDate = extractRssTag(block, 'pubDate');
+    if (!title || !link) continue;
+    items.push({
+      sourceName,
+      title,
+      link: link.trim(),
+      description: stripHtml(descriptionRaw),
+      pubDate
+    });
+  }
+  return items;
+}
+
+function matchesNewsTopic(item) {
+  const hay = `${item.title} ${item.description}`.toLowerCase();
+  return NEWS_KEYWORDS.some((kw) => hay.includes(kw));
+}
+
+function dedupeByLink(items) {
+  const seen = new Set();
+  const result = [];
+  for (const item of items) {
+    if (seen.has(item.link)) continue;
+    seen.add(item.link);
+    result.push(item);
+  }
+  return result;
+}
+
+function shuffleInPlace(list) {
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
+
+async function summarizeNewsItem(env, item) {
+  const model = getOpenAIModel(env);
+  const gatewayUrl = getOpenAIChatEndpoint(env);
+  const payload = {
+    model: `openai/${model}`,
+    messages: [
+      {
+        role: 'system',
+        content: '너는 베트남 현지 뉴스를 베트남에서 사업하는 한국 F&B 사장님을 위해 정리하는 도우미다. 반드시 JSON만 반환하고, 원문에 없는 사실은 지어내지 않는다.'
+      },
+      {
+        role: 'user',
+        content: [
+          '다음 베트남 경제 뉴스를 한국어로 정리해줘.',
+          `제목(베트남어): ${item.title}`,
+          `내용(베트남어): ${item.description || '(요약 없음)'}`,
+          '',
+          '아래 JSON 형식으로만 답해:',
+          '{"titleKo":"자연스러운 한국어 제목","summaryKo":"핵심을 3~4줄로 정리한 한국어 요약","ownerPointKo":"베트남에서 장사하는 한국 사장님 관점의 실용 포인트 한 줄"}'
+        ].join('\n')
+      }
+    ],
+    temperature: 0.4,
+    max_tokens: 700,
+    response_format: { type: 'json_object' }
+  };
+
+  const response = await fetch(gatewayUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const text = await response.text();
+  if (!response.ok) throw new Error(`news summarize failed: ${response.status} ${text.slice(0, 200)}`);
+  const data = JSON.parse(text);
+  const content = data?.choices?.[0]?.message?.content || '';
+  const parsed = JSON.parse(content);
+  return {
+    titleKo: String(parsed.titleKo || '').trim(),
+    summaryKo: String(parsed.summaryKo || '').trim(),
+    ownerPointKo: String(parsed.ownerPointKo || '').trim()
+  };
+}
+
+async function generateNewsDrafts(env) {
+  if (!env.USAGE_KV) return { ok: false, reason: 'KV_NOT_BOUND', created: 0 };
+  if (!env.OPENAI_API_KEY) return { ok: false, reason: 'OPENAI_KEY_MISSING', created: 0 };
+
+  const count = 2 + Math.floor(Math.random() * 2); // 2 or 3
+
+  let all = [];
+  for (const src of NEWS_SOURCES) {
+    try {
+      const res = await fetch(src.url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; VNBossBot/1.0)' } });
+      if (!res.ok) continue;
+      const xml = await res.text();
+      all = all.concat(parseRssItems(xml, src.name));
+    } catch (error) {
+      console.error('[VN Boss Worker] news fetch failed:', src.name, error);
+    }
+  }
+
+  const seenList = await getNewsList(env, 'news:seen');
+  const seen = new Set(seenList);
+  let candidates = dedupeByLink(all.filter(matchesNewsTopic)).filter((item) => !seen.has(item.link));
+
+  if (!candidates.length) {
+    return { ok: true, created: 0, note: '조건에 맞는 새 기사가 없습니다.' };
+  }
+
+  shuffleInPlace(candidates);
+  const picks = candidates.slice(0, count);
+
+  const drafts = [];
+  for (const item of picks) {
+    try {
+      const summary = await summarizeNewsItem(env, item);
+      if (!summary.titleKo || !summary.summaryKo) continue;
+      drafts.push({
+        id: newsId(),
+        sourceName: item.sourceName,
+        link: item.link,
+        pubDate: item.pubDate || '',
+        titleKo: summary.titleKo,
+        summaryKo: summary.summaryKo,
+        ownerPointKo: summary.ownerPointKo,
+        createdAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('[VN Boss Worker] summarize failed:', error);
+    }
+  }
+
+  if (drafts.length) {
+    const existing = await getNewsList(env, 'news:drafts');
+    const merged = drafts.concat(existing).slice(0, NEWS_MAX_DRAFTS);
+    await env.USAGE_KV.put('news:drafts', JSON.stringify(merged));
+
+    const nextSeen = picks.map((p) => p.link).concat(seenList).slice(0, NEWS_MAX_SEEN);
+    await env.USAGE_KV.put('news:seen', JSON.stringify(nextSeen));
+  }
+
+  return { ok: true, created: drafts.length };
+}
+
+async function publishNewsDraft(env, id, edited) {
+  const drafts = await getNewsList(env, 'news:drafts');
+  const target = drafts.find((item) => item.id === id);
+  if (!target) return { ok: false, message: '초안을 찾을 수 없습니다.' };
+
+  const entry = {
+    ...target,
+    titleKo: edited && typeof edited.titleKo === 'string' && edited.titleKo.trim() ? edited.titleKo.trim() : target.titleKo,
+    summaryKo: edited && typeof edited.summaryKo === 'string' && edited.summaryKo.trim() ? edited.summaryKo.trim() : target.summaryKo,
+    ownerPointKo: edited && typeof edited.ownerPointKo === 'string' ? edited.ownerPointKo.trim() : target.ownerPointKo,
+    publishedAt: new Date().toISOString()
+  };
+
+  const published = await getNewsList(env, 'news:published');
+  const nextPublished = [entry].concat(published.filter((item) => item.id !== id)).slice(0, NEWS_MAX_PUBLISHED);
+  const nextDrafts = drafts.filter((item) => item.id !== id);
+
+  await env.USAGE_KV.put('news:published', JSON.stringify(nextPublished));
+  await env.USAGE_KV.put('news:drafts', JSON.stringify(nextDrafts));
+
+  return { ok: true, message: '게시되었습니다.' };
 }
 
 

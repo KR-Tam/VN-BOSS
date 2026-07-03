@@ -9,6 +9,10 @@ const membersTableWrap = document.querySelector('#membersTableWrap');
 const errorsTableWrap = document.querySelector('#errorsTableWrap');
 const refreshMembersButton = document.querySelector('#refreshMembers');
 const refreshErrorsButton = document.querySelector('#refreshErrors');
+const newsDraftsWrap = document.querySelector('#newsDraftsWrap');
+const newsPublishedWrap = document.querySelector('#newsPublishedWrap');
+const refreshNewsButton = document.querySelector('#refreshNews');
+const generateNewsButton = document.querySelector('#generateNews');
 
 let firebaseAuth = null;
 let firebaseProvider = null;
@@ -80,6 +84,7 @@ function showDashboard() {
   adminDashboard.style.display = 'block';
   loadMembers();
   loadErrors();
+  loadNews();
 }
 
 function showGate(message) {
@@ -198,6 +203,82 @@ function renderErrors(errors) {
   `;
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function loadNews() {
+  if (!newsDraftsWrap || !newsPublishedWrap) return;
+  newsDraftsWrap.innerHTML = '<p class="admin-empty">불러오는 중...</p>';
+  newsPublishedWrap.innerHTML = '';
+  try {
+    const data = await adminFetch('/api/admin/news-drafts');
+    renderNews(data.drafts || [], data.published || []);
+  } catch (error) {
+    if (error.message === 'UNAUTHORIZED') {
+      showGate('관리자 인증이 만료되었습니다. 다시 로그인해주세요.');
+      return;
+    }
+    newsDraftsWrap.innerHTML = `<p class="admin-empty">불러오기 실패: ${error.message}</p>`;
+  }
+}
+
+function renderNewsCard(item, isDraft) {
+  const meta = `${escapeHtml(item.sourceName)}${item.pubDate ? ' · ' + escapeHtml(item.pubDate) : ''} · <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">원문 링크</a>`;
+  const point = item.ownerPointKo ? `<p class="news-point">💡 ${escapeHtml(item.ownerPointKo)}</p>` : '';
+  const actions = isDraft
+    ? `<div class="news-actions"><button class="news-publish" data-news-publish="${item.id}">게시</button><button class="news-danger" data-news-reject="${item.id}">삭제</button></div>`
+    : `<div class="news-actions"><button class="news-danger" data-news-remove="${item.id}">게시 취소</button></div>`;
+  return `<div class="news-card">
+    <h4>${escapeHtml(item.titleKo)}</h4>
+    <p class="news-body">${escapeHtml(item.summaryKo)}</p>
+    ${point}
+    <p class="news-meta">${meta}</p>
+    ${actions}
+  </div>`;
+}
+
+function renderNews(drafts, published) {
+  if (!drafts.length) {
+    newsDraftsWrap.innerHTML = '<p class="admin-empty">승인 대기 중인 초안이 없습니다. “지금 초안 생성”으로 테스트할 수 있습니다.</p>';
+  } else {
+    newsDraftsWrap.innerHTML = drafts.map((item) => renderNewsCard(item, true)).join('');
+  }
+  if (!published.length) {
+    newsPublishedWrap.innerHTML = '<p class="admin-empty">게시된 뉴스가 없습니다.</p>';
+  } else {
+    newsPublishedWrap.innerHTML = published.map((item) => renderNewsCard(item, false)).join('');
+  }
+
+  newsDraftsWrap.querySelectorAll('[data-news-publish]').forEach((button) => {
+    button.addEventListener('click', () => newsAction('/api/admin/news-publish', { id: button.dataset.newsPublish }, button));
+  });
+  newsDraftsWrap.querySelectorAll('[data-news-reject]').forEach((button) => {
+    button.addEventListener('click', () => newsAction('/api/admin/news-reject', { id: button.dataset.newsReject }, button));
+  });
+  newsPublishedWrap.querySelectorAll('[data-news-remove]').forEach((button) => {
+    button.addEventListener('click', () => newsAction('/api/admin/news-reject', { id: button.dataset.newsRemove, target: 'published' }, button));
+  });
+}
+
+async function newsAction(path, body, button) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = '처리 중...';
+  try {
+    await adminFetch(path, { method: 'POST', body: JSON.stringify(body) });
+    await loadNews();
+  } catch (error) {
+    button.textContent = '실패';
+    button.disabled = false;
+    setTimeout(() => { button.textContent = original; }, 1200);
+  }
+}
+
 adminLoginButton.addEventListener('click', async () => {
   if (!firebaseAuth || !firebaseProvider) {
     adminGateStatus.textContent = '로그인 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.';
@@ -228,5 +309,23 @@ adminLogoutButton.addEventListener('click', async () => {
 
 refreshMembersButton.addEventListener('click', loadMembers);
 refreshErrorsButton.addEventListener('click', loadErrors);
+if (refreshNewsButton) refreshNewsButton.addEventListener('click', loadNews);
+if (generateNewsButton) generateNewsButton.addEventListener('click', async () => {
+  const original = generateNewsButton.textContent;
+  generateNewsButton.disabled = true;
+  generateNewsButton.textContent = '생성 중... (최대 1분)';
+  try {
+    const result = await adminFetch('/api/admin/news-generate', { method: 'POST' });
+    generateNewsButton.textContent = `완료: ${result.created || 0}건${result.note ? ' (' + result.note + ')' : ''}`;
+    await loadNews();
+  } catch (error) {
+    generateNewsButton.textContent = '실패: ' + error.message;
+  } finally {
+    setTimeout(() => {
+      generateNewsButton.textContent = original;
+      generateNewsButton.disabled = false;
+    }, 2500);
+  }
+});
 
 initFirebase();

@@ -36,6 +36,7 @@ const installSteps = document.querySelector('#installSteps');
 const installConfirmButton = document.querySelector('#installConfirmButton');
 let deferredInstallPrompt = null;
 const INSTALL_DISMISS_KEY = 'vnBossInstallDismissed';
+const newsGrid = document.querySelector('#newsGrid');
 const loginModalTitle = document.querySelector('#loginModalTitle');
 const loginModalCopy = loginModal ? loginModal.querySelector('p:not(.eyebrow)') : null;
 let firebaseAuth = null;
@@ -1017,6 +1018,52 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch((error) => console.error('[VN Boss] SW register failed:', error));
   });
 }
+
+function escapeHtmlText(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderNewsCards(news) {
+  if (!newsGrid) return;
+  if (!Array.isArray(news) || !news.length) {
+    newsGrid.innerHTML = '<p class="news-empty">아직 게시된 뉴스가 없습니다. 곧 업데이트됩니다.</p>';
+    return;
+  }
+  newsGrid.innerHTML = news.map((item) => {
+    const point = item.ownerPointKo
+      ? `<p class="news-point">💡 ${escapeHtmlText(item.ownerPointKo)}</p>`
+      : '';
+    return `<article class="news-card">
+      <h3>${escapeHtmlText(item.titleKo)}</h3>
+      <p class="news-summary">${escapeHtmlText(item.summaryKo)}</p>
+      ${point}
+      <div class="news-meta">
+        <span class="news-source">출처: ${escapeHtmlText(item.sourceName)}</span>
+        <a class="news-link" href="${escapeHtmlText(item.link)}" target="_blank" rel="noopener noreferrer">원문 보기</a>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+async function loadPublicNews() {
+  if (!newsGrid) return;
+  try {
+    const status = getConfigStatus();
+    const base = status.endpoint.replace(/\/api\/generate$/, '');
+    const response = await fetch(`${base}/api/news`);
+    const data = await response.json();
+    renderNewsCards(data.news || []);
+  } catch (error) {
+    console.error('[VN Boss] Failed to load news:', error);
+    newsGrid.innerHTML = '<p class="news-empty">뉴스를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</p>';
+  }
+}
+
+loadPublicNews();
 
 window.VNBossPromptBuilder = {
   getNoticeInputs,

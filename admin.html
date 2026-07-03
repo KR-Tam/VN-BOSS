@@ -20,6 +20,16 @@
     .admin-refresh { padding: 6px 14px; border-radius: 6px; border: 1px solid #d0d5dd; background: #fff; cursor: pointer; font-size: 13px; }
     .admin-empty { color: #98a2b3; font-size: 13px; padding: 12px 0; }
     .admin-logout { float: right; font-size: 12px; color: #98a2b3; background: none; border: none; cursor: pointer; }
+    .news-card { border: 1px solid #eaecf0; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: #fff; }
+    .news-card h4 { margin: 0 0 6px; font-size: 15px; }
+    .news-card .news-body { margin: 0 0 8px; color: #344054; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+    .news-card .news-point { margin: 0 0 8px; color: #087f6f; font-size: 13px; font-weight: 700; }
+    .news-card .news-meta { color: #98a2b3; font-size: 12px; margin: 0 0 10px; }
+    .news-card .news-meta a { color: #087f6f; text-decoration: underline; }
+    .news-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .news-actions button { padding: 6px 14px; font-size: 13px; border-radius: 6px; border: 1px solid #d0d5dd; background: #fff; cursor: pointer; }
+    .news-actions .news-publish { background: #087f6f; color: #fff; border-color: #087f6f; }
+    .news-actions .news-danger { color: #b94040; }
   </style>
 </head>
 <body>
@@ -56,6 +66,19 @@
         <p class="admin-meta">메시지 생성 호출 실패 기록 (최근 20건)</p>
         <button class="admin-refresh" id="refreshErrors" type="button">새로고침</button>
         <div id="errorsTableWrap"></div>
+      </section>
+
+      <section class="admin-section">
+        <h2>베트남 뉴스 관리</h2>
+        <p class="admin-meta">매일 아침 7시(베트남)에 초안이 자동 생성됩니다. 검토 후 “게시”를 눌러야 사이트에 노출됩니다. 저작권·애드센스 보호를 위해 원문 이미지는 사용하지 않고 요약·링크·출처만 노출합니다.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <button class="admin-refresh" id="refreshNews" type="button">새로고침</button>
+          <button class="admin-refresh" id="generateNews" type="button">지금 초안 생성 (테스트)</button>
+        </div>
+        <h3 style="margin:10px 0 6px;font-size:15px;">승인 대기 초안</h3>
+        <div id="newsDraftsWrap"></div>
+        <h3 style="margin:20px 0 6px;font-size:15px;">게시된 뉴스</h3>
+        <div id="newsPublishedWrap"></div>
       </section>
     </div>
   </main>

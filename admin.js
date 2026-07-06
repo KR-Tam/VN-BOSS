@@ -183,8 +183,17 @@ function renderMembers(members, integrated) {
     ? '<p class="admin-meta" style="margin:0 0 10px;color:#087f6f;">Firebase 전체 가입자 기준으로 표시 중입니다. (가입만 하고 미방문한 회원도 포함)</p>'
     : '<p class="admin-meta" style="margin:0 0 10px;">서버 기록(KV) 기준입니다. Firebase 전체 가입자 표시는 서비스 계정 설정이 필요합니다.</p>';
 
+  const today = new Date().toDateString();
+  const todaySignups = members.filter((m) => {
+    try { return new Date(m.firstSeen).toDateString() === today; } catch (e) { return false; }
+  }).length;
+  const stats = `<div style="display:flex;gap:20px;flex-wrap:wrap;margin:0 0 12px;font-size:15px;">
+    <span>총 회원수 <strong style="color:#087f6f;font-size:17px;">${members.length}</strong>명</span>
+    <span>오늘 가입 <strong style="color:#087f6f;font-size:17px;">${todaySignups}</strong>명</span>
+  </div>`;
+
   if (!members.length) {
-    membersTableWrap.innerHTML = note + '<p class="admin-empty">아직 표시할 회원이 없습니다.</p>';
+    membersTableWrap.innerHTML = note + stats + '<p class="admin-empty">아직 표시할 회원이 없습니다.</p>';
     return;
   }
 
@@ -204,7 +213,7 @@ function renderMembers(members, integrated) {
   `;
   }).join('');
 
-  membersTableWrap.innerHTML = note + `
+  membersTableWrap.innerHTML = note + stats + `
     <table class="admin-table">
       <thead><tr><th>이름</th><th>이메일</th><th>가입/최초</th><th>최근 접속</th><th>금일 요청</th><th>총 요청</th><th></th></tr></thead>
       <tbody>${rows}</tbody>

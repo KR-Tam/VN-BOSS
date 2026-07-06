@@ -450,6 +450,19 @@ async function handleAdminRequest(request, env, url) {
     return jsonResponse(result, 200);
   }
 
+  if (url.pathname === '/api/admin/news-regenerate' && request.method === 'POST') {
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return jsonResponse({ message: '요청 내용을 확인해주세요.', userFriendly: true }, 400);
+    }
+    const id = typeof body.id === 'string' ? body.id : '';
+    if (!id) return jsonResponse({ message: 'id가 필요합니다.', userFriendly: true }, 400);
+    const result = await handleRegenerateDraft(env, id);
+    return jsonResponse(result, result.ok ? 200 : 404);
+  }
+
   if (url.pathname === '/api/admin/news-generate-selected' && request.method === 'POST') {
     let body;
     try {
@@ -1132,6 +1145,8 @@ async function summarizeToDraft(env, item) {
     sourceName: item.sourceName,
     link: item.link,
     pubDate: item.pubDate || '',
+    srcTitle: item.title || '',
+    srcDesc: item.description || '',
     titleKo: summary.titleKo,
     summaryKo: summary.summaryKo,
     policyChangeKo: summary.policyChangeKo,
@@ -1140,6 +1155,27 @@ async function summarizeToDraft(env, item) {
     discussionKo: summary.discussionKo,
     createdAt: new Date().toISOString()
   };
+}
+
+// Re-summarize an existing draft in place (same id/position) with current code.
+async function handleRegenerateDraft(env, id) {
+  const drafts = await getNewsList(env, 'news:drafts');
+  const idx = drafts.findIndex((d) => d.id === id);
+  if (idx === -1) return { ok: false, message: '초안을 찾을 수 없습니다.' };
+  const target = drafts[idx];
+  const item = {
+    title: target.srcTitle || '',
+    description: target.srcDesc || '',
+    link: target.link,
+    sourceName: target.sourceName,
+    pubDate: target.pubDate || ''
+  };
+  const fresh = await summarizeToDraft(env, item);
+  if (!fresh) return { ok: false, message: '재생성에 실패했습니다.' };
+  fresh.id = target.id;
+  drafts[idx] = fresh;
+  await env.USAGE_KV.put('news:drafts', JSON.stringify(drafts));
+  return { ok: true, created: 1 };
 }
 
 async function saveDraftsAndSeen(env, drafts, links) {

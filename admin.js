@@ -319,7 +319,7 @@ function renderNewsCard(item, isDraft) {
   const point = item.ownerPointKo ? `<p class="news-point">💡 ${escapeHtml(item.ownerPointKo)}</p>` : '';
   const discussion = item.discussionKo ? `<p class="news-point" style="background:#eef6f3;">🗣️ 논점: ${escapeHtml(item.discussionKo)}</p>` : '';
   const actions = isDraft
-    ? `<div class="news-actions"><button class="news-publish" data-news-publish="${item.id}">게시</button><button class="news-danger" data-news-reject="${item.id}">삭제</button></div>`
+    ? `<div class="news-actions"><button class="news-publish" data-news-publish="${item.id}">게시</button><button data-news-regen="${item.id}">재생성</button><button class="news-danger" data-news-reject="${item.id}">삭제</button></div>`
     : `<div class="news-actions"><button class="news-danger" data-news-remove="${item.id}">게시 취소</button></div>`;
   return `<div class="news-card">
     <h4>${escapeHtml(item.titleKo)}</h4>
@@ -350,6 +350,9 @@ function renderNews(drafts, published) {
   });
   newsDraftsWrap.querySelectorAll('[data-news-reject]').forEach((button) => {
     button.addEventListener('click', () => newsAction('/api/admin/news-reject', { id: button.dataset.newsReject }, button));
+  });
+  newsDraftsWrap.querySelectorAll('[data-news-regen]').forEach((button) => {
+    button.addEventListener('click', () => newsAction('/api/admin/news-regenerate', { id: button.dataset.newsRegen }, button));
   });
   newsPublishedWrap.querySelectorAll('[data-news-remove]').forEach((button) => {
     button.addEventListener('click', () => newsAction('/api/admin/news-reject', { id: button.dataset.newsRemove, target: 'published' }, button));

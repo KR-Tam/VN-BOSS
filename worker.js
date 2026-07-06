@@ -864,6 +864,36 @@ function matchesNewsTopic(item) {
   return NEWS_KEYWORDS.some((kw) => hay.includes(kw));
 }
 
+function extractArticleText(html) {
+  const cleaned = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ');
+  const paragraphs = [];
+  const regex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+  let match;
+  while ((match = regex.exec(cleaned)) !== null) {
+    const text = decodeXmlEntities(match[1].replace(/<[^>]+>/g, ' '))
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (text.length < 40) continue;
+    if (/localStorage|function\s*\(|var\s|\{|\}|;\s*$/.test(text)) continue;
+    paragraphs.push(text);
+  }
+  return paragraphs.join('\n').slice(0, 4500);
+}
+
+async function fetchArticleText(url) {
+  try {
+    const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; VNBossBot/1.0)' } });
+    if (!response.ok) return '';
+    const html = await response.text();
+    return extractArticleText(html);
+  } catch (error) {
+    console.error('[VN Boss Worker] article fetch failed:', error);
+    return '';
+  }
+}
+
 function dedupeByLink(items) {
   const seen = new Set();
   const result = [];
@@ -883,7 +913,7 @@ function shuffleInPlace(list) {
   return list;
 }
 
-async function summarizeNewsItem(env, item) {
+async function summarizeNewsItem(env, item, articleText) {
   const model = getOpenAIModel(env);
   const gatewayUrl = getOpenAIChatEndpoint(env);
   const payload = {
@@ -891,22 +921,29 @@ async function summarizeNewsItem(env, item) {
     messages: [
       {
         role: 'system',
-        content: '너는 베트남 현지 뉴스를 베트남에서 사업하는 한국 F&B 사장님을 위해 정리하는 도우미다. 반드시 JSON만 반환하고, 원문에 없는 사실은 지어내지 않는다.'
+        content: '너는 베트남 현지 뉴스를 베트남에서 사업하는 한국 F&B 사장님을 위해 정리하는 애널리스트다. 반드시 JSON만 반환한다. 본문에 실제로 있는 사실만 쓰고, 없는 수치·날짜·정책 내용은 절대 지어내지 않는다.'
       },
       {
         role: 'user',
         content: [
-          '다음 베트남 경제 뉴스를 한국어로 정리해줘.',
+          '다음 베트남 뉴스를 한국어로 정리해줘.',
           `제목(베트남어): ${item.title}`,
-          `내용(베트남어): ${item.description || '(요약 없음)'}`,
+          `미리보기(베트남어): ${item.description || '(없음)'}`,
+          `본문(베트남어): ${articleText || '(본문을 가져오지 못함 — 위 미리보기만 사용)'}`,
+          '',
+          '규칙:',
+          '- 본문/미리보기에 실제로 있는 사실만 사용하고, 없는 내용은 지어내지 마라.',
+          '- summaryKo: 기사 핵심을 빠짐없이 한국어로 정리(누가·무엇을·왜·수치·영향). 5~8문장, 문단으로.',
+          '- policyChangeKo: 정책·규정·법·수수료·세금 등 "변경" 기사라면 변경 전과 후를 사실 그대로 대비해서 써라. 형식 예: "이전: ... / 변경 후: ...". 정책 변경이 아니거나 본문에 전/후가 명시되지 않았으면 빈 문자열("").',
+          '- ownerPointKo: 이 소식에 베트남에서 사업하는 한국 사장님이 어떻게 대응하면 좋을지 구체적인 조언 2~3문장.',
           '',
           '아래 JSON 형식으로만 답해:',
-          '{"titleKo":"자연스러운 한국어 제목","summaryKo":"핵심을 3~4줄로 정리한 한국어 요약","ownerPointKo":"베트남에서 장사하는 한국 사장님 관점의 실용 포인트 한 줄"}'
+          '{"titleKo":"자연스러운 한국어 제목","summaryKo":"","policyChangeKo":"","ownerPointKo":""}'
         ].join('\n')
       }
     ],
     temperature: 0.4,
-    max_tokens: 700,
+    max_tokens: 1600,
     response_format: { type: 'json_object' }
   };
 
@@ -927,6 +964,7 @@ async function summarizeNewsItem(env, item) {
   return {
     titleKo: String(parsed.titleKo || '').trim(),
     summaryKo: String(parsed.summaryKo || '').trim(),
+    policyChangeKo: String(parsed.policyChangeKo || '').trim(),
     ownerPointKo: String(parsed.ownerPointKo || '').trim()
   };
 }
@@ -963,7 +1001,8 @@ async function generateNewsDrafts(env) {
   const drafts = [];
   for (const item of picks) {
     try {
-      const summary = await summarizeNewsItem(env, item);
+      const articleText = await fetchArticleText(item.link);
+      const summary = await summarizeNewsItem(env, item, articleText);
       if (!summary.titleKo || !summary.summaryKo) continue;
       drafts.push({
         id: newsId(),
@@ -972,6 +1011,7 @@ async function generateNewsDrafts(env) {
         pubDate: item.pubDate || '',
         titleKo: summary.titleKo,
         summaryKo: summary.summaryKo,
+        policyChangeKo: summary.policyChangeKo,
         ownerPointKo: summary.ownerPointKo,
         createdAt: new Date().toISOString()
       });

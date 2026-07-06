@@ -1034,13 +1034,17 @@ function renderNewsCards(news) {
     return;
   }
   newsGrid.innerHTML = news.map((item) => {
+    const policy = item.policyChangeKo
+      ? `<div class="news-policy"><span class="news-policy-title">📋 정책 변경 전/후</span><p>${escapeHtmlText(item.policyChangeKo)}</p></div>`
+      : '';
     const point = item.ownerPointKo
-      ? `<p class="news-point">💡 ${escapeHtmlText(item.ownerPointKo)}</p>`
+      ? `<div class="news-point"><span class="news-point-title">💡 사장님 대응 포인트</span><p>${escapeHtmlText(item.ownerPointKo)}</p></div>`
       : '';
     const id = escapeHtmlText(item.id);
     return `<article class="news-card" data-news-id="${id}">
       <h3>${escapeHtmlText(item.titleKo)}</h3>
       <p class="news-summary">${escapeHtmlText(item.summaryKo)}</p>
+      ${policy}
       ${point}
       <div class="news-meta">
         <span class="news-source">출처: ${escapeHtmlText(item.sourceName)}</span>

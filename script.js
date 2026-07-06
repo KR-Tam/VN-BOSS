@@ -1037,6 +1037,9 @@ function renderNewsCards(news) {
     const policy = item.policyChangeKo
       ? `<div class="news-policy"><span class="news-policy-title">📋 정책 변경 전/후</span><p>${escapeHtmlText(item.policyChangeKo)}</p></div>`
       : '';
+    const official = item.officialTextKo
+      ? `<div class="news-official"><span class="news-official-title">📜 관련 법령 원문 (비공식 번역)</span><p>${escapeHtmlText(item.officialTextKo)}</p><span class="news-official-note">※ 비공식 번역으로 법적 효력이 없습니다. 정확한 내용은 원문을 확인하세요.</span></div>`
+      : '';
     const point = item.ownerPointKo
       ? `<div class="news-point"><span class="news-point-title">💡 사장님 대응 포인트</span><p>${escapeHtmlText(item.ownerPointKo)}</p></div>`
       : '';
@@ -1048,6 +1051,7 @@ function renderNewsCards(news) {
       <h3>${escapeHtmlText(item.titleKo)}</h3>
       <p class="news-summary">${escapeHtmlText(item.summaryKo)}</p>
       ${policy}
+      ${official}
       ${point}
       ${discussion}
       <div class="news-meta">

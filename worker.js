@@ -935,16 +935,17 @@ async function summarizeNewsItem(env, item, articleText) {
           '- 본문/미리보기에 실제로 있는 사실만 사용하고, 없는 내용은 지어내지 마라.',
           '- summaryKo: 기사 핵심을 3~5문장으로 간결하게 정리(누가·무엇을·왜·영향).',
           '- policyChangeKo: 정책·규정·법·수수료·세금 등 "변경" 기사라면 변경 전과 후를 사실 그대로 대비해서 써라. 형식 예: "이전: ... / 변경 후: ...". 정책 변경이 아니거나 본문에 전/후가 명시되지 않았으면 빈 문자열("").',
+          '- officialTextKo: 본문에 정부 공식 법령(법률·시행령·시행규칙·조문, 예: "Điều 18 Thông tư 78/2014/TT-BTC")의 실제 조문 텍스트가 인용되어 있으면, 그 "조문 자체"만 한국어로 정확하고 충실하게 번역해 넣어라. 기자의 해설·설명·요약 문장은 절대 포함하지 말고, 인용된 법 조문 원문만 번역한다. 조문 앞에 어떤 법령의 몇 조인지 표기하라(예: "[시행규칙 78/2014/TT-BTC 제18조]"). 법령 조문 인용이 없으면 빈 문자열("").',
           '- ownerPointKo: 두 부분으로 구성. (1) 이 사안에서 "무엇이 왜 문제가 되는지"를 구체적 예시로 설명한다. 예: 어떤 상황에서 어떤 사장님이 어떤 손해·불이익을 겪을 수 있는지 실제 시나리오로. (2) 그래서 앞으로 무엇을 어떻게 점검·대비해야 하는지 실무적으로. 4~6문장, 뻔한 말 금지.',
           '- discussionKo: 사장님들이 댓글로 서로 의견을 나누고 싶어지도록 던지는 열린 질문 1~2문장. 이 뉴스 주제와 직접 연결된 실제 고민이어야 한다. 예: "여러분은 거래처 세금계산서를 어떻게 검증하시나요?"',
           '',
           '아래 JSON 형식으로만 답해:',
-          '{"titleKo":"자연스러운 한국어 제목","summaryKo":"","policyChangeKo":"","ownerPointKo":"","discussionKo":""}'
+          '{"titleKo":"자연스러운 한국어 제목","summaryKo":"","policyChangeKo":"","officialTextKo":"","ownerPointKo":"","discussionKo":""}'
         ].join('\n')
       }
     ],
     temperature: 0.4,
-    max_tokens: 1600,
+    max_tokens: 2000,
     response_format: { type: 'json_object' }
   };
 
@@ -966,6 +967,7 @@ async function summarizeNewsItem(env, item, articleText) {
     titleKo: String(parsed.titleKo || '').trim(),
     summaryKo: String(parsed.summaryKo || '').trim(),
     policyChangeKo: String(parsed.policyChangeKo || '').trim(),
+    officialTextKo: String(parsed.officialTextKo || '').trim(),
     ownerPointKo: String(parsed.ownerPointKo || '').trim(),
     discussionKo: String(parsed.discussionKo || '').trim()
   };
@@ -1014,6 +1016,7 @@ async function generateNewsDrafts(env) {
         titleKo: summary.titleKo,
         summaryKo: summary.summaryKo,
         policyChangeKo: summary.policyChangeKo,
+        officialTextKo: summary.officialTextKo,
         ownerPointKo: summary.ownerPointKo,
         discussionKo: summary.discussionKo,
         createdAt: new Date().toISOString()

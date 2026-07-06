@@ -42,11 +42,10 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    // Runs on the configured cron trigger (Vietnam 07:00 = 00:00 UTC).
-    // Generates news drafts only; publishing stays a manual admin approval.
-    ctx.waitUntil(
-      generateNewsDrafts(env).catch((error) => console.error('[VN Boss Worker] news cron failed:', error))
-    );
+    // Daily auto-generation is intentionally DISABLED to control API cost.
+    // News is now generated on demand from the admin (candidate selection).
+    // Kept as a no-op so any leftover cron trigger costs nothing.
+    console.log('[VN Boss Worker] scheduled tick — auto news generation disabled by design.');
   }
 };
 
@@ -420,6 +419,24 @@ async function handleAdminRequest(request, env, url) {
 
   if (url.pathname === '/api/admin/news-generate' && request.method === 'POST') {
     const result = await generateNewsDrafts(env);
+    return jsonResponse(result, 200);
+  }
+
+  if (url.pathname === '/api/admin/news-candidates' && request.method === 'POST') {
+    const result = await handleNewsCandidates(env);
+    return jsonResponse(result, 200);
+  }
+
+  if (url.pathname === '/api/admin/news-generate-selected' && request.method === 'POST') {
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return jsonResponse({ message: '요청 내용을 확인해주세요.', userFriendly: true }, 400);
+    }
+    const ids = Array.isArray(body.ids) ? body.ids.filter((id) => typeof id === 'string') : [];
+    if (!ids.length) return jsonResponse({ message: '선택된 기사가 없습니다.', userFriendly: true }, 400);
+    const result = await handleGenerateSelected(env, ids);
     return jsonResponse(result, 200);
   }
 
@@ -797,6 +814,9 @@ const NEWS_KEYWORDS = [
 const NEWS_MAX_DRAFTS = 30;
 const NEWS_MAX_PUBLISHED = 30;
 const NEWS_MAX_SEEN = 250;
+// Cheap model for ranking candidate headlines (one small call). Kept low-cost
+// even if the summarization model is later upgraded.
+const NEWS_RANK_MODEL = 'gpt-4o-mini';
 
 async function getNewsList(env, key) {
   if (!env.USAGE_KV) return [];
@@ -979,12 +999,8 @@ async function summarizeNewsItem(env, item, articleText) {
   };
 }
 
-async function generateNewsDrafts(env) {
-  if (!env.USAGE_KV) return { ok: false, reason: 'KV_NOT_BOUND', created: 0 };
-  if (!env.OPENAI_API_KEY) return { ok: false, reason: 'OPENAI_KEY_MISSING', created: 0 };
-
-  const count = 2 + Math.floor(Math.random() * 2); // 2 or 3
-
+// Fetch + keyword-filter + dedupe candidates. RSS only, no API cost.
+async function fetchNewsCandidates(env) {
   let all = [];
   for (const src of NEWS_SOURCES) {
     try {
@@ -996,51 +1012,161 @@ async function generateNewsDrafts(env) {
       console.error('[VN Boss Worker] news fetch failed:', src.name, error);
     }
   }
+  const seen = new Set(await getNewsList(env, 'news:seen'));
+  return dedupeByLink(all.filter(matchesNewsTopic)).filter((item) => !seen.has(item.link));
+}
 
+async function summarizeToDraft(env, item) {
+  const articleText = await fetchArticleText(item.link);
+  const summary = await summarizeNewsItem(env, item, articleText);
+  if (!summary.titleKo || !summary.summaryKo) return null;
+  return {
+    id: newsId(),
+    sourceName: item.sourceName,
+    link: item.link,
+    pubDate: item.pubDate || '',
+    titleKo: summary.titleKo,
+    summaryKo: summary.summaryKo,
+    policyChangeKo: summary.policyChangeKo,
+    officialTextKo: summary.officialTextKo,
+    ownerPointKo: summary.ownerPointKo,
+    discussionKo: summary.discussionKo,
+    createdAt: new Date().toISOString()
+  };
+}
+
+async function saveDraftsAndSeen(env, drafts, links) {
+  if (!drafts.length) return;
+  const existing = await getNewsList(env, 'news:drafts');
+  const merged = drafts.concat(existing).slice(0, NEWS_MAX_DRAFTS);
+  await env.USAGE_KV.put('news:drafts', JSON.stringify(merged));
   const seenList = await getNewsList(env, 'news:seen');
-  const seen = new Set(seenList);
-  let candidates = dedupeByLink(all.filter(matchesNewsTopic)).filter((item) => !seen.has(item.link));
+  const nextSeen = links.concat(seenList).slice(0, NEWS_MAX_SEEN);
+  await env.USAGE_KV.put('news:seen', JSON.stringify(nextSeen));
+}
 
-  if (!candidates.length) {
-    return { ok: true, created: 0, note: '조건에 맞는 새 기사가 없습니다.' };
+// Rank candidates by relevance for Korean F&B owners using a cheap model.
+// One small API call regardless of candidate count. Returns candidates ordered
+// best-first, each with a short Korean reason. Falls back to original order.
+async function rankCandidates(env, candidates) {
+  const top = candidates.slice(0, 25);
+  if (top.length <= 1) return top.map((c) => ({ ...c, reasonKo: '' }));
+
+  const listText = top.map((c, i) => `${i + 1}. ${c.title} — ${(c.description || '').slice(0, 120)}`).join('\n');
+  const payload = {
+    model: `openai/${NEWS_RANK_MODEL}`,
+    messages: [
+      { role: 'system', content: '너는 베트남에서 사업하는 한국 F&B(요식업) 사장님에게 실질적으로 중요한 뉴스를 골라주는 편집자다. 세금·정책·인허가·노무·식품안전·임대·비용 등 사장님이 대응해야 하는 실무 뉴스를 높게 평가한다. 반드시 JSON만 반환한다.' },
+      { role: 'user', content: [
+        '다음 베트남 뉴스 후보 목록에서 한국 F&B 사장님에게 중요한 순서로 최대 10개를 골라라.',
+        listText,
+        '',
+        'JSON 형식으로만: {"picks":[{"index":번호,"reasonKo":"왜 중요한지 한 줄"}]}. index는 위 번호. 관련성 낮은 것은 제외.'
+      ].join('\n') }
+    ],
+    temperature: 0.2,
+    max_tokens: 900,
+    response_format: { type: 'json_object' }
+  };
+
+  try {
+    const res = await fetch(getOpenAIChatEndpoint(env), {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`rank failed ${res.status}`);
+    const data = JSON.parse(text);
+    const parsed = JSON.parse(data?.choices?.[0]?.message?.content || '{}');
+    const picks = Array.isArray(parsed.picks) ? parsed.picks : [];
+    const ordered = [];
+    for (const p of picks) {
+      const idx = Number(p.index) - 1;
+      if (idx >= 0 && idx < top.length) {
+        ordered.push({ ...top[idx], reasonKo: String(p.reasonKo || '').trim() });
+      }
+    }
+    return ordered.length ? ordered : top.map((c) => ({ ...c, reasonKo: '' }));
+  } catch (error) {
+    console.error('[VN Boss Worker] rank failed:', error);
+    return top.map((c) => ({ ...c, reasonKo: '' }));
   }
+}
+
+// Admin: fetch + rank candidates (cheap), store them for later selection.
+async function handleNewsCandidates(env) {
+  if (!env.USAGE_KV) return { ok: false, reason: 'KV_NOT_BOUND', candidates: [] };
+  if (!env.OPENAI_API_KEY) return { ok: false, reason: 'OPENAI_KEY_MISSING', candidates: [] };
+  const candidates = await fetchNewsCandidates(env);
+  if (!candidates.length) {
+    await env.USAGE_KV.put('news:candidates', JSON.stringify([]));
+    return { ok: true, candidates: [], note: '조건에 맞는 새 기사가 없습니다.' };
+  }
+  const ranked = await rankCandidates(env, candidates);
+  const withIds = ranked.map((c) => ({
+    id: newsId2(),
+    title: c.title,
+    description: c.description || '',
+    sourceName: c.sourceName,
+    link: c.link,
+    pubDate: c.pubDate || '',
+    reasonKo: c.reasonKo || ''
+  }));
+  await env.USAGE_KV.put('news:candidates', JSON.stringify(withIds));
+  return { ok: true, candidates: withIds };
+}
+
+// Admin: summarize ONLY the selected candidates (this is where API cost is spent).
+async function handleGenerateSelected(env, ids) {
+  if (!env.USAGE_KV) return { ok: false, reason: 'KV_NOT_BOUND', created: 0 };
+  if (!env.OPENAI_API_KEY) return { ok: false, reason: 'OPENAI_KEY_MISSING', created: 0 };
+  const stored = await getNewsList(env, 'news:candidates');
+  const selected = stored.filter((c) => ids.includes(c.id));
+  if (!selected.length) return { ok: true, created: 0, note: '선택된 기사가 없습니다.' };
+
+  const drafts = [];
+  const links = [];
+  for (const item of selected) {
+    try {
+      const draft = await summarizeToDraft(env, item);
+      if (draft) {
+        drafts.push(draft);
+        links.push(item.link);
+      }
+    } catch (error) {
+      console.error('[VN Boss Worker] selected summarize failed:', error);
+    }
+  }
+  await saveDraftsAndSeen(env, drafts, links);
+  return { ok: true, created: drafts.length };
+}
+
+// Legacy random auto-generation (kept for manual "random" button / fallback).
+async function generateNewsDrafts(env) {
+  if (!env.USAGE_KV) return { ok: false, reason: 'KV_NOT_BOUND', created: 0 };
+  if (!env.OPENAI_API_KEY) return { ok: false, reason: 'OPENAI_KEY_MISSING', created: 0 };
+
+  const count = 2 + Math.floor(Math.random() * 2); // 2 or 3
+  const candidates = await fetchNewsCandidates(env);
+  if (!candidates.length) return { ok: true, created: 0, note: '조건에 맞는 새 기사가 없습니다.' };
 
   shuffleInPlace(candidates);
   const picks = candidates.slice(0, count);
-
   const drafts = [];
+  const links = [];
   for (const item of picks) {
     try {
-      const articleText = await fetchArticleText(item.link);
-      const summary = await summarizeNewsItem(env, item, articleText);
-      if (!summary.titleKo || !summary.summaryKo) continue;
-      drafts.push({
-        id: newsId(),
-        sourceName: item.sourceName,
-        link: item.link,
-        pubDate: item.pubDate || '',
-        titleKo: summary.titleKo,
-        summaryKo: summary.summaryKo,
-        policyChangeKo: summary.policyChangeKo,
-        officialTextKo: summary.officialTextKo,
-        ownerPointKo: summary.ownerPointKo,
-        discussionKo: summary.discussionKo,
-        createdAt: new Date().toISOString()
-      });
+      const draft = await summarizeToDraft(env, item);
+      if (draft) {
+        drafts.push(draft);
+        links.push(item.link);
+      }
     } catch (error) {
       console.error('[VN Boss Worker] summarize failed:', error);
     }
   }
-
-  if (drafts.length) {
-    const existing = await getNewsList(env, 'news:drafts');
-    const merged = drafts.concat(existing).slice(0, NEWS_MAX_DRAFTS);
-    await env.USAGE_KV.put('news:drafts', JSON.stringify(merged));
-
-    const nextSeen = picks.map((p) => p.link).concat(seenList).slice(0, NEWS_MAX_SEEN);
-    await env.USAGE_KV.put('news:seen', JSON.stringify(nextSeen));
-  }
-
+  await saveDraftsAndSeen(env, drafts, links);
   return { ok: true, created: drafts.length };
 }
 

@@ -530,6 +530,17 @@ async function listKvMembers(env) {
 // the member list is the full Firebase Authentication user list (so every signup
 // shows, even without visiting), enriched with KV usage data. Otherwise it falls
 // back to the KV-only list.
+async function attachTodayUsage(env, members) {
+  const date = getQuotaDate();
+  return Promise.all(members.map(async (member) => {
+    let todayUsage = 0;
+    try {
+      todayUsage = Number(await env.USAGE_KV.get(`usage:${date}:free:${member.userId}`)) || 0;
+    } catch (error) {}
+    return { ...member, todayUsage, dailyLimit: DAILY_LIMITS.free };
+  }));
+}
+
 async function listMembers(env) {
   const kvMembers = await listKvMembers(env);
 
@@ -540,7 +551,7 @@ async function listMembers(env) {
     console.error('[VN Boss Worker] access token failed:', error);
   }
   if (!accessToken) {
-    return { members: kvMembers, integrated: false };
+    return { members: await attachTodayUsage(env, kvMembers), integrated: false };
   }
 
   let firebaseUsers;
@@ -548,7 +559,7 @@ async function listMembers(env) {
     firebaseUsers = await listFirebaseUsers(env, accessToken);
   } catch (error) {
     console.error('[VN Boss Worker] list Firebase users failed:', error);
-    return { members: kvMembers, integrated: false };
+    return { members: await attachTodayUsage(env, kvMembers), integrated: false };
   }
 
   const kvByUid = new Map(kvMembers.map((m) => [m.userId, m]));
@@ -566,7 +577,7 @@ async function listMembers(env) {
   });
 
   merged.sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''));
-  return { members: merged, integrated: true };
+  return { members: await attachTodayUsage(env, merged), integrated: true };
 }
 
 async function recordErrorLog(env, entry) {

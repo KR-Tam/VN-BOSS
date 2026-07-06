@@ -126,20 +126,25 @@ function renderMembers(members, integrated) {
     return;
   }
 
-  const rows = members.map((member) => `
+  const rows = members.map((member) => {
+    const limit = member.dailyLimit || 10;
+    const today = member.todayUsage || 0;
+    return `
     <tr>
       <td>${member.displayName || '-'}</td>
       <td>${member.email || '-'}</td>
       <td>${formatDate(member.firstSeen)}</td>
       <td>${formatDate(member.lastSeen)}</td>
+      <td>${today} / ${limit}</td>
       <td>${member.totalRequests || 0}</td>
-      <td><button data-reset-user="${member.userId}">오늘 사용량 초기화</button></td>
+      <td><button data-reset-user="${member.userId}">금일 초기화</button></td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   membersTableWrap.innerHTML = note + `
     <table class="admin-table">
-      <thead><tr><th>이름</th><th>이메일</th><th>가입/최초</th><th>최근 접속</th><th>총 요청</th><th></th></tr></thead>
+      <thead><tr><th>이름</th><th>이메일</th><th>가입/최초</th><th>최근 접속</th><th>금일 요청</th><th>총 요청</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;
@@ -159,10 +164,7 @@ async function resetQuota(userId, button) {
       body: JSON.stringify({ userId, memberType: 'free' })
     });
     button.textContent = '완료';
-    setTimeout(() => {
-      button.textContent = original;
-      button.disabled = false;
-    }, 1200);
+    setTimeout(() => { loadMembers(); }, 600);
   } catch (error) {
     button.textContent = '실패';
     button.disabled = false;

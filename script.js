@@ -1027,6 +1027,13 @@ function escapeHtmlText(value) {
     .replace(/"/g, '&quot;');
 }
 
+function formatNewsDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
+}
+
 function renderNewsCards(news) {
   if (!newsGrid) return;
   if (!Array.isArray(news) || !news.length) {
@@ -1044,6 +1051,7 @@ function renderNewsCards(news) {
       ? `<div class="news-point"><span class="news-point-title">💡 사장님 대응 포인트</span><p>${escapeHtmlText(item.ownerPointKo)}</p></div>`
       : '';
     const id = escapeHtmlText(item.id);
+    const dateStr = formatNewsDate(item.pubDate || item.publishedAt);
     const discussion = item.discussionKo
       ? `<div class="news-discussion"><span class="news-discussion-title">🗣️ 이야기 나눠보기</span><p>${escapeHtmlText(item.discussionKo)}</p><button class="news-discussion-cta" type="button" data-comment-toggle="${id}">댓글로 의견 남기기</button></div>`
       : '';
@@ -1055,7 +1063,7 @@ function renderNewsCards(news) {
       ${point}
       ${discussion}
       <div class="news-meta">
-        <span class="news-source">출처: ${escapeHtmlText(item.sourceName)}</span>
+        <span class="news-source">출처: ${escapeHtmlText(item.sourceName)}${dateStr ? ' · ' + dateStr : ''}</span>
         <a class="news-link" href="${escapeHtmlText(item.link)}" target="_blank" rel="noopener noreferrer">원문 보기</a>
       </div>
       <div class="news-comments">

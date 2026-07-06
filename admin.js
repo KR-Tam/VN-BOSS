@@ -233,8 +233,16 @@ async function loadNews() {
   }
 }
 
+function formatNewsDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
+}
+
 function renderNewsCard(item, isDraft) {
-  const meta = `${escapeHtml(item.sourceName)}${item.pubDate ? ' · ' + escapeHtml(item.pubDate) : ''} · <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">원문 링크</a>`;
+  const dateStr = formatNewsDate(item.pubDate || item.publishedAt);
+  const meta = `${escapeHtml(item.sourceName)}${dateStr ? ' · ' + dateStr : ''} · <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">원문 링크</a>`;
   const policy = item.policyChangeKo ? `<p class="news-body" style="background:#fff7e8;padding:8px 10px;border-radius:6px;"><strong>📋 정책 전/후:</strong> ${escapeHtml(item.policyChangeKo)}</p>` : '';
   const official = item.officialTextKo ? `<p class="news-body" style="background:#f3f4f6;padding:8px 10px;border-radius:6px;"><strong>📜 법령 원문(비공식 번역):</strong> ${escapeHtml(item.officialTextKo)}</p>` : '';
   const point = item.ownerPointKo ? `<p class="news-point">💡 ${escapeHtml(item.ownerPointKo)}</p>` : '';

@@ -10,6 +10,8 @@ const ADMIN_EMAILS = ['sirisiri1148@gmail.com'];
 const FIREBASE_JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 let cachedFirebaseJwks = null;
 let cachedFirebaseJwksExpiry = 0;
+let cachedGoogleAccessToken = null;
+let cachedGoogleAccessTokenExpiry = 0;
 
 const DAILY_LIMITS = {
   guest: 0,
@@ -265,6 +267,111 @@ async function isAdminRequest(request, env) {
   return allowed;
 }
 
+/* ---- Firebase Admin: list all Authentication users via a service account ---- */
+
+function getServiceAccount(env) {
+  const raw = env.FIREBASE_SERVICE_ACCOUNT;
+  if (!raw || typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed.client_email && parsed.private_key) return parsed;
+    return null;
+  } catch (error) {
+    console.error('[VN Boss Worker] FIREBASE_SERVICE_ACCOUNT parse failed:', error);
+    return null;
+  }
+}
+
+function bytesToBase64Url(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function stringToBase64Url(value) {
+  return bytesToBase64Url(new TextEncoder().encode(value));
+}
+
+function pemToPkcs8Bytes(pem) {
+  const body = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, '')
+    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/\s+/g, '');
+  const binary = atob(body);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function getGoogleAccessToken(env) {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedGoogleAccessToken && now < cachedGoogleAccessTokenExpiry - 60) {
+    return cachedGoogleAccessToken;
+  }
+
+  const sa = getServiceAccount(env);
+  if (!sa) return null;
+
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const claims = {
+    iss: sa.client_email,
+    scope: 'https://www.googleapis.com/auth/identitytoolkit',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600
+  };
+  const signingInput = `${stringToBase64Url(JSON.stringify(header))}.${stringToBase64Url(JSON.stringify(claims))}`;
+
+  let key;
+  try {
+    key = await crypto.subtle.importKey(
+      'pkcs8',
+      pemToPkcs8Bytes(sa.private_key),
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+  } catch (error) {
+    console.error('[VN Boss Worker] service account key import failed:', error);
+    return null;
+  }
+
+  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(signingInput));
+  const jwt = `${signingInput}.${bytesToBase64Url(new Uint8Array(signature))}`;
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=${encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')}&assertion=${jwt}`
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) {
+    console.error('[VN Boss Worker] token exchange failed:', response.status, data);
+    return null;
+  }
+
+  cachedGoogleAccessToken = data.access_token;
+  cachedGoogleAccessTokenExpiry = now + (Number(data.expires_in) || 3600);
+  return cachedGoogleAccessToken;
+}
+
+async function listFirebaseUsers(env, accessToken) {
+  const users = [];
+  let pageToken = '';
+  do {
+    const url = `https://identitytoolkit.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/accounts:batchGet?maxResults=1000${pageToken ? `&nextPageToken=${encodeURIComponent(pageToken)}` : ''}`;
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`listFirebaseUsers ${response.status}: ${text.slice(0, 200)}`);
+    }
+    const data = await response.json();
+    if (Array.isArray(data.users)) users.push(...data.users);
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  return users;
+}
+
 async function handleAdminRequest(request, env, url) {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -279,8 +386,8 @@ async function handleAdminRequest(request, env, url) {
   }
 
   if (url.pathname === '/api/admin/members' && request.method === 'GET') {
-    const members = await listMembers(env);
-    return jsonResponse({ members }, 200);
+    const result = await listMembers(env);
+    return jsonResponse({ members: result.members, integrated: result.integrated }, 200);
   }
 
   if (url.pathname === '/api/admin/errors' && request.method === 'GET') {
@@ -399,7 +506,7 @@ async function recordMember(env, memberState, options = {}) {
   await env.USAGE_KV.put(key, JSON.stringify(record));
 }
 
-async function listMembers(env) {
+async function listKvMembers(env) {
   const members = [];
   let cursor;
   do {
@@ -417,6 +524,49 @@ async function listMembers(env) {
 
   members.sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''));
   return members;
+}
+
+// Returns { members, integrated }. When a Firebase service account is configured,
+// the member list is the full Firebase Authentication user list (so every signup
+// shows, even without visiting), enriched with KV usage data. Otherwise it falls
+// back to the KV-only list.
+async function listMembers(env) {
+  const kvMembers = await listKvMembers(env);
+
+  let accessToken = null;
+  try {
+    accessToken = await getGoogleAccessToken(env);
+  } catch (error) {
+    console.error('[VN Boss Worker] access token failed:', error);
+  }
+  if (!accessToken) {
+    return { members: kvMembers, integrated: false };
+  }
+
+  let firebaseUsers;
+  try {
+    firebaseUsers = await listFirebaseUsers(env, accessToken);
+  } catch (error) {
+    console.error('[VN Boss Worker] list Firebase users failed:', error);
+    return { members: kvMembers, integrated: false };
+  }
+
+  const kvByUid = new Map(kvMembers.map((m) => [m.userId, m]));
+  const merged = firebaseUsers.map((user) => {
+    const kv = kvByUid.get(user.localId);
+    const provider = (user.providerUserInfo && user.providerUserInfo[0]) || {};
+    return {
+      userId: user.localId,
+      email: user.email || provider.email || '',
+      displayName: (kv && kv.displayName) || user.displayName || provider.displayName || '',
+      firstSeen: user.createdAt ? new Date(Number(user.createdAt)).toISOString() : (kv && kv.firstSeen) || '',
+      lastSeen: user.lastLoginAt ? new Date(Number(user.lastLoginAt)).toISOString() : (kv && kv.lastSeen) || '',
+      totalRequests: (kv && kv.totalRequests) || 0
+    };
+  });
+
+  merged.sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''));
+  return { members: merged, integrated: true };
 }
 
 async function recordErrorLog(env, entry) {

@@ -106,7 +106,7 @@ async function loadMembers() {
   membersTableWrap.innerHTML = '<p class="admin-empty">불러오는 중...</p>';
   try {
     const data = await adminFetch('/api/admin/members');
-    renderMembers(data.members || []);
+    renderMembers(data.members || [], data.integrated === true);
   } catch (error) {
     if (error.message === 'UNAUTHORIZED') {
       showGate('관리자 인증이 만료되었습니다. 다시 로그인해주세요.');
@@ -116,9 +116,13 @@ async function loadMembers() {
   }
 }
 
-function renderMembers(members) {
+function renderMembers(members, integrated) {
+  const note = integrated
+    ? '<p class="admin-meta" style="margin:0 0 10px;color:#087f6f;">Firebase 전체 가입자 기준으로 표시 중입니다. (가입만 하고 미방문한 회원도 포함)</p>'
+    : '<p class="admin-meta" style="margin:0 0 10px;">서버 기록(KV) 기준입니다. Firebase 전체 가입자 표시는 서비스 계정 설정이 필요합니다.</p>';
+
   if (!members.length) {
-    membersTableWrap.innerHTML = '<p class="admin-empty">아직 기록된 회원이 없습니다. 회원이 메시지 생성을 한 번 이상 시도하면 표시됩니다.</p>';
+    membersTableWrap.innerHTML = note + '<p class="admin-empty">아직 표시할 회원이 없습니다.</p>';
     return;
   }
 
@@ -133,9 +137,9 @@ function renderMembers(members) {
     </tr>
   `).join('');
 
-  membersTableWrap.innerHTML = `
+  membersTableWrap.innerHTML = note + `
     <table class="admin-table">
-      <thead><tr><th>이름</th><th>이메일</th><th>최초 접속</th><th>최근 접속</th><th>총 요청</th><th></th></tr></thead>
+      <thead><tr><th>이름</th><th>이메일</th><th>가입/최초</th><th>최근 접속</th><th>총 요청</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;

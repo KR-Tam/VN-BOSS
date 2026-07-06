@@ -915,6 +915,9 @@ const NEWS_MAX_SEEN = 250;
 // Cheap model for ranking candidate headlines (one small call). Kept low-cost
 // even if the summarization model is later upgraded.
 const NEWS_RANK_MODEL = 'gpt-4o-mini';
+// Stronger model for the actual summary (numbers/accuracy). News only; the
+// member message generator stays on its own model.
+const NEWS_SUMMARY_MODEL = 'gpt-4o';
 
 async function getNewsList(env, key) {
   if (!env.USAGE_KV) return [];
@@ -997,7 +1000,7 @@ function extractArticleText(html) {
     if (/localStorage|function\s*\(|var\s|\{|\}|;\s*$/.test(text)) continue;
     paragraphs.push(text);
   }
-  return paragraphs.join('\n').slice(0, 4500);
+  return paragraphs.join('\n').slice(0, 9000);
 }
 
 async function fetchArticleText(url) {
@@ -1032,14 +1035,14 @@ function shuffleInPlace(list) {
 }
 
 async function summarizeNewsItem(env, item, articleText) {
-  const model = getOpenAIModel(env);
+  const model = NEWS_SUMMARY_MODEL;
   const gatewayUrl = getOpenAIChatEndpoint(env);
   const payload = {
     model: `openai/${model}`,
     messages: [
       {
         role: 'system',
-        content: '너는 베트남에서 사업하는 한국 F&B 사장님을 돕는 실무 컨설턴트다. 반드시 JSON만 반환한다. 본문에 실제로 있는 사실만 쓰고, 없는 수치·날짜·정책 내용은 절대 지어내지 않는다. 막연하고 뻔한 표현("주의해야 한다", "관리가 중요하다")은 금지하고, 구체적인 상황과 예시로 설명한다.'
+        content: '너는 베트남에서 사업하는 한국 F&B 사장님을 돕는 실무 컨설턴트다. 반드시 JSON만 반환한다. 본문에 실제로 있는 사실만 쓰고, 없는 수치·날짜·정책 내용은 절대 지어내지 않는다. 숫자와 금액은 특히 정확해야 한다. 막연하고 뻔한 표현("주의해야 한다", "관리가 중요하다")은 금지하고, 구체적인 상황과 예시로 설명한다.'
       },
       {
         role: 'user',
@@ -1051,7 +1054,12 @@ async function summarizeNewsItem(env, item, articleText) {
           '',
           '규칙:',
           '- 본문/미리보기에 실제로 있는 사실만 사용하고, 없는 내용은 지어내지 마라.',
-          '- summaryKo: 기사 핵심을 3~5문장으로 간결하게 정리(누가·무엇을·왜·영향).',
+          '- 숫자·금액 규칙(매우 중요, 틀리면 안 됨):',
+          '   • 베트남어 숫자는 점(.)이 천 단위 구분, 쉼표(,)가 소수점이다. 예: "2.530.000 đồng"=2,530,000동, "0,35"=0.35.',
+          '   • 베트남어 단위 변환: nghìn/ngàn=천, triệu=백만(=100만), tỷ=십억. 예: "50 triệu đồng"=5천만 동(50,000,000동), "885.500 đồng"=885,500동.',
+          '   • triệu(백만)을 "만"으로, nghìn(천)을 "백"으로 절대 줄여 쓰지 마라. 금액은 동(VND) 값을 그대로 유지하고 변환을 한 번 더 검산하라.',
+          '   • 기사에 요금 산정 공식·계수·기준금액·구체적 예시 금액이 있으면 summaryKo에 반드시 그대로 포함하라.',
+          '- summaryKo: 기사 핵심을 4~6문장으로 정리(누가·무엇을·왜·핵심 수치·영향). 위 숫자 규칙을 지켜라.',
           '- policyChangeKo: 정책·규정·법·수수료·세금 등 "변경" 기사라면 변경 전과 후를 사실 그대로 대비해서 써라. 형식 예: "이전: ... / 변경 후: ...". 정책 변경이 아니거나 본문에 전/후가 명시되지 않았으면 빈 문자열("").',
           '- officialTextKo: 본문에 정부 공식 법령(법률·시행령·시행규칙·조문, 예: "Điều 18 Thông tư 78/2014/TT-BTC")의 실제 조문 텍스트가 인용되어 있으면, 그 "조문 자체"만 한국어로 정확하고 충실하게 번역해 넣어라. 기자의 해설·설명·요약 문장은 절대 포함하지 말고, 인용된 법 조문 원문만 번역한다. 조문 앞에 어떤 법령의 몇 조인지 표기하라(예: "[시행규칙 78/2014/TT-BTC 제18조]"). 법령 조문 인용이 없으면 빈 문자열("").',
           '- ownerPointKo: 절대 한 문장으로 뭉뚱그리지 마라. 반드시 아래 3가지를 각각 구체적으로 써라(총 4~6문장, 문단):',

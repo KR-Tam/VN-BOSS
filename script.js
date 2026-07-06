@@ -1037,7 +1037,8 @@ function renderNewsCards(news) {
     const point = item.ownerPointKo
       ? `<p class="news-point">💡 ${escapeHtmlText(item.ownerPointKo)}</p>`
       : '';
-    return `<article class="news-card">
+    const id = escapeHtmlText(item.id);
+    return `<article class="news-card" data-news-id="${id}">
       <h3>${escapeHtmlText(item.titleKo)}</h3>
       <p class="news-summary">${escapeHtmlText(item.summaryKo)}</p>
       ${point}
@@ -1045,8 +1046,160 @@ function renderNewsCards(news) {
         <span class="news-source">출처: ${escapeHtmlText(item.sourceName)}</span>
         <a class="news-link" href="${escapeHtmlText(item.link)}" target="_blank" rel="noopener noreferrer">원문 보기</a>
       </div>
+      <div class="news-comments">
+        <button class="news-comment-toggle" type="button" data-comment-toggle="${id}">💬 댓글</button>
+        <div class="news-comment-panel" data-comment-panel="${id}" style="display:none;"></div>
+      </div>
     </article>`;
   }).join('');
+}
+
+async function getMemberIdToken() {
+  if (!firebaseAuth || !firebaseAuth.currentUser) return '';
+  try {
+    return await firebaseAuth.currentUser.getIdToken();
+  } catch (error) {
+    return '';
+  }
+}
+
+function commentItemHtml(comment, currentUid, isAdmin) {
+  const canDelete = (comment.userId && comment.userId === currentUid) || isAdmin;
+  const del = canDelete
+    ? `<button class="comment-del" type="button" data-comment-del="${escapeHtmlText(comment.id)}">삭제</button>`
+    : '';
+  let time = '';
+  try {
+    time = new Date(comment.createdAt).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch (error) {}
+  return `<div class="comment-item">
+    <div class="comment-head"><strong>${escapeHtmlText(comment.displayName)}</strong><span>${time}</span></div>
+    <p class="comment-text">${escapeHtmlText(comment.text)}</p>
+    ${del}
+  </div>`;
+}
+
+function renderCommentsInto(panel, newsId, comments) {
+  if (!panel) return;
+  const member = getMemberState();
+  const isMemberUser = member.type === 'free';
+  const isAdmin = isMemberUser && ADMIN_EMAILS.includes((member.email || '').toLowerCase());
+  const list = comments.length
+    ? comments.map((comment) => commentItemHtml(comment, member.userId, isAdmin)).join('')
+    : '<p class="comment-empty">아직 댓글이 없습니다. 첫 댓글을 남겨보세요.</p>';
+  const form = isMemberUser
+    ? `<div class="comment-form">
+        <textarea class="comment-input" data-comment-input="${escapeHtmlText(newsId)}" maxlength="500" placeholder="댓글을 입력하세요 (최대 500자)"></textarea>
+        <button class="comment-submit" type="button" data-comment-submit="${escapeHtmlText(newsId)}">등록</button>
+      </div>`
+    : '<p class="comment-login">댓글은 로그인한 무료 회원만 작성할 수 있습니다.</p>';
+  panel.innerHTML = `<div class="comment-list">${list}</div>${form}`;
+}
+
+async function loadComments(newsId, panel) {
+  if (!panel) return;
+  panel.innerHTML = '<p class="comment-empty">불러오는 중...</p>';
+  try {
+    const status = getConfigStatus();
+    const base = status.endpoint.replace(/\/api\/generate$/, '');
+    const response = await fetch(`${base}/api/news/comments?newsId=${encodeURIComponent(newsId)}`);
+    const data = await response.json();
+    renderCommentsInto(panel, newsId, data.comments || []);
+  } catch (error) {
+    panel.innerHTML = '<p class="comment-empty">댓글을 불러오지 못했습니다.</p>';
+  }
+}
+
+async function postComment(newsId, text, panel, button) {
+  if (!isMember()) {
+    openLoginModal('댓글 작성은 로그인 후 가능합니다');
+    return;
+  }
+  const token = await getMemberIdToken();
+  if (!token) {
+    openLoginModal('댓글 작성은 로그인 후 가능합니다');
+    return;
+  }
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = '등록 중...';
+  try {
+    const status = getConfigStatus();
+    const base = status.endpoint.replace(/\/api\/generate$/, '');
+    const response = await fetch(`${base}/api/news/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ newsId, text })
+    });
+    if (!response.ok) throw new Error('post failed');
+    await loadComments(newsId, panel);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = original;
+    setStatus('댓글 등록에 실패했습니다. 잠시 후 다시 시도해주세요.', 'warn');
+  }
+}
+
+async function deleteComment(newsId, commentId, panel) {
+  const token = await getMemberIdToken();
+  if (!token) return;
+  try {
+    const status = getConfigStatus();
+    const base = status.endpoint.replace(/\/api\/generate$/, '');
+    const response = await fetch(`${base}/api/news/comments/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ newsId, commentId })
+    });
+    if (!response.ok) throw new Error('delete failed');
+    await loadComments(newsId, panel);
+  } catch (error) {
+    setStatus('댓글 삭제에 실패했습니다.', 'warn');
+  }
+}
+
+function findCommentPanel(newsId) {
+  return newsGrid ? newsGrid.querySelector(`[data-comment-panel="${newsId}"]`) : null;
+}
+
+if (newsGrid) {
+  newsGrid.addEventListener('click', (event) => {
+    const toggle = event.target.closest('[data-comment-toggle]');
+    if (toggle) {
+      const newsId = toggle.dataset.commentToggle;
+      const panel = findCommentPanel(newsId);
+      if (!panel) return;
+      if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        loadComments(newsId, panel);
+      } else {
+        panel.style.display = 'none';
+      }
+      return;
+    }
+
+    const submit = event.target.closest('[data-comment-submit]');
+    if (submit) {
+      const newsId = submit.dataset.commentSubmit;
+      const panel = findCommentPanel(newsId);
+      const input = panel ? panel.querySelector(`[data-comment-input="${newsId}"]`) : null;
+      const text = input ? input.value.trim() : '';
+      if (!text) {
+        setStatus('댓글 내용을 입력해주세요.', 'warn');
+        return;
+      }
+      postComment(newsId, text, panel, submit);
+      return;
+    }
+
+    const del = event.target.closest('[data-comment-del]');
+    if (del) {
+      const card = del.closest('[data-news-id]');
+      const newsId = card ? card.dataset.newsId : '';
+      const panel = findCommentPanel(newsId);
+      deleteComment(newsId, del.dataset.commentDel, panel);
+    }
+  });
 }
 
 async function loadPublicNews() {

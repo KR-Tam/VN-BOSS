@@ -72,6 +72,18 @@ async function handleRequest(request, env) {
     return jsonResponse({ news: news.slice(0, 20) }, 200);
   }
 
+  if (url.pathname === '/api/news/comments' && request.method === 'GET') {
+    return handleGetComments(env, url);
+  }
+
+  if (url.pathname === '/api/news/comments' && request.method === 'POST') {
+    return handleAddComment(request, env);
+  }
+
+  if (url.pathname === '/api/news/comments/delete' && request.method === 'POST') {
+    return handleDeleteComment(request, env);
+  }
+
   if (url.pathname !== '/api/generate') {
     return jsonResponse({ message: 'Not found' }, 404);
   }
@@ -840,6 +852,114 @@ async function publishNewsDraft(env, id, edited) {
   await env.USAGE_KV.put('news:drafts', JSON.stringify(nextDrafts));
 
   return { ok: true, message: '게시되었습니다.' };
+}
+
+/* ---- News comments (members can comment on published news) ---- */
+
+const COMMENT_MAX_LEN = 500;
+const COMMENT_MAX_PER_NEWS = 300;
+
+function sanitizeNewsId(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 40);
+}
+
+function getBearerToken(request) {
+  const authHeader = request.headers.get('Authorization') || '';
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : '';
+}
+
+async function handleGetComments(env, url) {
+  if (!env.USAGE_KV) return jsonResponse({ comments: [] }, 200);
+  const newsId = sanitizeNewsId(url.searchParams.get('newsId'));
+  if (!newsId) return jsonResponse({ comments: [] }, 200);
+  const comments = await getNewsList(env, `comments:${newsId}`);
+  return jsonResponse({ comments }, 200);
+}
+
+async function handleAddComment(request, env) {
+  if (!env.USAGE_KV) {
+    return jsonResponse({ message: '저장소가 연결되지 않았습니다.', userFriendly: true }, 500);
+  }
+  const payload = await verifyFirebaseIdToken(getBearerToken(request));
+  if (!payload) {
+    return jsonResponse({ message: '댓글은 로그인 후 작성할 수 있습니다.', userFriendly: true, code: 'AUTH_REQUIRED' }, 401);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (error) {
+    return jsonResponse({ message: '요청 내용을 확인해주세요.', userFriendly: true }, 400);
+  }
+
+  const newsId = sanitizeNewsId(body.newsId);
+  const text = typeof body.text === 'string' ? body.text.trim().slice(0, COMMENT_MAX_LEN) : '';
+  if (!newsId || !text) {
+    return jsonResponse({ message: '댓글 내용을 입력해주세요.', userFriendly: true }, 400);
+  }
+
+  const published = await getNewsList(env, 'news:published');
+  if (!published.some((item) => item.id === newsId)) {
+    return jsonResponse({ message: '뉴스를 찾을 수 없습니다.', userFriendly: true }, 404);
+  }
+
+  const key = `comments:${newsId}`;
+  const list = await getNewsList(env, key);
+  const comment = {
+    id: newsId2(),
+    userId: payload.user_id || payload.sub || '',
+    displayName: String(payload.name || payload.email || '회원').slice(0, 40),
+    text,
+    createdAt: new Date().toISOString()
+  };
+  const next = list.concat([comment]).slice(-COMMENT_MAX_PER_NEWS);
+  await env.USAGE_KV.put(key, JSON.stringify(next));
+  return jsonResponse({ ok: true, comment }, 200);
+}
+
+async function handleDeleteComment(request, env) {
+  if (!env.USAGE_KV) {
+    return jsonResponse({ message: '저장소가 연결되지 않았습니다.', userFriendly: true }, 500);
+  }
+  const payload = await verifyFirebaseIdToken(getBearerToken(request));
+  if (!payload) {
+    return jsonResponse({ message: '로그인 후 이용해주세요.', userFriendly: true, code: 'AUTH_REQUIRED' }, 401);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (error) {
+    return jsonResponse({ message: '요청 내용을 확인해주세요.', userFriendly: true }, 400);
+  }
+
+  const newsId = sanitizeNewsId(body.newsId);
+  const commentId = typeof body.commentId === 'string' ? body.commentId : '';
+  if (!newsId || !commentId) {
+    return jsonResponse({ message: '잘못된 요청입니다.', userFriendly: true }, 400);
+  }
+
+  const key = `comments:${newsId}`;
+  const list = await getNewsList(env, key);
+  const target = list.find((item) => item.id === commentId);
+  if (!target) {
+    return jsonResponse({ message: '댓글을 찾을 수 없습니다.', userFriendly: true }, 404);
+  }
+
+  const uid = payload.user_id || payload.sub || '';
+  const isAdmin = getAdminEmails(env).includes((payload.email || '').toLowerCase());
+  if (target.userId !== uid && !isAdmin) {
+    return jsonResponse({ message: '본인 댓글만 삭제할 수 있습니다.', userFriendly: true }, 403);
+  }
+
+  const next = list.filter((item) => item.id !== commentId);
+  await env.USAGE_KV.put(key, JSON.stringify(next));
+  return jsonResponse({ ok: true }, 200);
+}
+
+function newsId2() {
+  return `c${Date.now()}${Math.floor(Math.random() * 100000)}`;
 }
 
 

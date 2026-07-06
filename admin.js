@@ -9,6 +9,10 @@ const membersTableWrap = document.querySelector('#membersTableWrap');
 const errorsTableWrap = document.querySelector('#errorsTableWrap');
 const refreshMembersButton = document.querySelector('#refreshMembers');
 const refreshErrorsButton = document.querySelector('#refreshErrors');
+const usageWrap = document.querySelector('#usageWrap');
+const refreshUsageButton = document.querySelector('#refreshUsage');
+const balanceInput = document.querySelector('#balanceInput');
+const saveBalanceButton = document.querySelector('#saveBalance');
 const newsDraftsWrap = document.querySelector('#newsDraftsWrap');
 const newsPublishedWrap = document.querySelector('#newsPublishedWrap');
 const newsCandidatesWrap = document.querySelector('#newsCandidatesWrap');
@@ -87,6 +91,62 @@ function showDashboard() {
   loadMembers();
   loadErrors();
   loadNews();
+  loadUsage();
+}
+
+function fmtUsd(value) {
+  const n = Number(value) || 0;
+  return '$' + (n < 1 ? n.toFixed(4) : n.toFixed(2));
+}
+
+async function loadUsage() {
+  if (!usageWrap) return;
+  usageWrap.innerHTML = '<p class="admin-empty">불러오는 중...</p>';
+  try {
+    const data = await adminFetch('/api/admin/usage');
+    renderUsage(data);
+  } catch (error) {
+    if (error.message === 'UNAUTHORIZED') { showGate('관리자 인증이 만료되었습니다. 다시 로그인해주세요.'); return; }
+    usageWrap.innerHTML = `<p class="admin-empty">불러오기 실패: ${error.message}</p>`;
+  }
+}
+
+function renderUsage(data) {
+  const total = data.total || { cost: 0 };
+  const month = data.thisMonth || { cost: 0, message: 0, news: 0 };
+  const balance = data.balance;
+  let balanceRow = '<tr><td>예상 남은 금액</td><td>잔액을 입력하면 표시됩니다.</td></tr>';
+  if (balance) {
+    const remaining = Number(balance.remaining) || 0;
+    const color = remaining <= 0 ? '#b94040' : (remaining < 2 ? '#b9791a' : '#087f6f');
+    balanceRow = `<tr><td>예상 남은 금액</td><td style="font-weight:700;color:${color};">${fmtUsd(remaining)} <span style="color:#98a2b3;font-weight:400;">(입력 잔액 ${fmtUsd(balance.amount)} − 이후 사용 ${fmtUsd(balance.spentSince)})</span></td></tr>`;
+    if (balanceInput && !balanceInput.value) balanceInput.value = balance.amount;
+  }
+  usageWrap.innerHTML = `
+    <table class="admin-table">
+      <tbody>
+        <tr><td>이번 달 예상 사용액</td><td style="font-weight:700;">${fmtUsd(month.cost)} <span style="color:#98a2b3;font-weight:400;">(메시지 ${fmtUsd(month.message)} · 뉴스 ${fmtUsd(month.news)})</span></td></tr>
+        <tr><td>누적 예상 사용액</td><td>${fmtUsd(total.cost)}</td></tr>
+        ${balanceRow}
+      </tbody>
+    </table>`;
+}
+
+async function saveBalance() {
+  const amount = balanceInput ? Number(balanceInput.value) : NaN;
+  if (isNaN(amount) || amount < 0) { alert('잔액을 숫자로 입력하세요.'); return; }
+  const original = saveBalanceButton.textContent;
+  saveBalanceButton.disabled = true;
+  saveBalanceButton.textContent = '저장 중...';
+  try {
+    await adminFetch('/api/admin/usage-balance', { method: 'POST', body: JSON.stringify({ amount }) });
+    await loadUsage();
+    saveBalanceButton.textContent = '저장됨';
+  } catch (error) {
+    saveBalanceButton.textContent = '실패';
+  } finally {
+    setTimeout(() => { saveBalanceButton.textContent = original; saveBalanceButton.disabled = false; }, 1500);
+  }
 }
 
 function showGate(message) {
@@ -389,6 +449,8 @@ adminLogoutButton.addEventListener('click', async () => {
 
 refreshMembersButton.addEventListener('click', loadMembers);
 refreshErrorsButton.addEventListener('click', loadErrors);
+if (refreshUsageButton) refreshUsageButton.addEventListener('click', loadUsage);
+if (saveBalanceButton) saveBalanceButton.addEventListener('click', saveBalance);
 if (refreshNewsButton) refreshNewsButton.addEventListener('click', loadNews);
 if (loadCandidatesButton) loadCandidatesButton.addEventListener('click', async () => {
   const original = loadCandidatesButton.textContent;

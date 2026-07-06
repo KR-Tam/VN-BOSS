@@ -4,6 +4,15 @@ const DEFAULT_AI_GATEWAY_ACCOUNT_ID = 'bd0c3fba48bff8f5bec8f88cd625c719';
 const DEFAULT_AI_GATEWAY_ID = 'vnboss-gateway';
 const OPENAI_TIMEOUT_MS = 45000;
 
+// Estimated OpenAI prices (USD per 1M tokens). Edit if OpenAI pricing changes.
+const OPENAI_PRICING = {
+  'gpt-4o-mini': { in: 0.15, out: 0.60 },
+  'gpt-4o': { in: 2.50, out: 10.00 },
+  'gpt-4o-2024-08-06': { in: 2.50, out: 10.00 },
+  'gpt-5-mini': { in: 0.25, out: 2.00 }
+};
+const OPENAI_PRICING_DEFAULT = { in: 0.15, out: 0.60 };
+
 // Admin access is gated on a verified Firebase Google login, not a shared secret.
 const FIREBASE_PROJECT_ID = 'vn-boss';
 const ADMIN_EMAILS = ['sirisiri1148@gmail.com'];
@@ -130,7 +139,7 @@ async function handleRequest(request, env) {
     const model = getOpenAIModel(env);
     const gatewayUrl = getOpenAIChatEndpoint(env);
     console.log('[VN Boss Worker] calling AI Gateway:', gatewayUrl);
-    const result = await generateWithOpenAIChat(prompt, model, env.OPENAI_API_KEY, gatewayUrl);
+    const result = await generateWithOpenAIChat(prompt, model, env.OPENAI_API_KEY, gatewayUrl, env);
     await recordDailyQuota(env, quota);
 
     return jsonResponse({
@@ -394,6 +403,20 @@ async function handleAdminRequest(request, env, url) {
     return jsonResponse({ errors }, 200);
   }
 
+  if (url.pathname === '/api/admin/usage' && request.method === 'GET') {
+    return jsonResponse(await handleUsage(env), 200);
+  }
+
+  if (url.pathname === '/api/admin/usage-balance' && request.method === 'POST') {
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return jsonResponse({ message: '요청 내용을 확인해주세요.', userFriendly: true }, 400);
+    }
+    return jsonResponse(await handleSetBalance(env, body.amount), 200);
+  }
+
   if (url.pathname === '/api/admin/reset-quota' && request.method === 'POST') {
     let body;
     try {
@@ -619,6 +642,79 @@ async function getErrorLog(env) {
   }
 }
 
+// Accumulate estimated OpenAI spend from a response's usage object.
+async function recordOpenAiUsage(env, model, usage, feature) {
+  if (!env.USAGE_KV || !usage) return;
+  const inTok = Number(usage.prompt_tokens) || 0;
+  const outTok = Number(usage.completion_tokens) || 0;
+  if (!inTok && !outTok) return;
+  const price = OPENAI_PRICING[model] || OPENAI_PRICING_DEFAULT;
+  const cost = (inTok / 1e6) * price.in + (outTok / 1e6) * price.out;
+  const month = new Date().toISOString().slice(0, 7);
+
+  let data;
+  try {
+    data = JSON.parse(await env.USAGE_KV.get('openai:usage') || 'null') || {};
+  } catch (error) {
+    data = {};
+  }
+  if (!data.total) data.total = { cost: 0, inTok: 0, outTok: 0 };
+  if (!data.months) data.months = {};
+  if (!data.months[month]) data.months[month] = { cost: 0, inTok: 0, outTok: 0, message: 0, news: 0 };
+
+  data.total.cost += cost;
+  data.total.inTok += inTok;
+  data.total.outTok += outTok;
+  const m = data.months[month];
+  m.cost += cost;
+  m.inTok += inTok;
+  m.outTok += outTok;
+  if (feature === 'message') m.message += cost;
+  else m.news += cost;
+
+  await env.USAGE_KV.put('openai:usage', JSON.stringify(data));
+}
+
+async function handleUsage(env) {
+  const month = new Date().toISOString().slice(0, 7);
+  let data;
+  try {
+    data = JSON.parse(await env.USAGE_KV.get('openai:usage') || 'null') || {};
+  } catch (error) {
+    data = {};
+  }
+  let balance = null;
+  try {
+    balance = JSON.parse(await env.USAGE_KV.get('openai:balance') || 'null');
+  } catch (error) {
+    balance = null;
+  }
+  const totalCost = data.total ? data.total.cost : 0;
+  let balanceOut = null;
+  if (balance) {
+    const spentSince = totalCost - (balance.baseline || 0);
+    balanceOut = { amount: balance.amount, remaining: balance.amount - spentSince, spentSince, setAt: balance.setAt };
+  }
+  return {
+    total: data.total || { cost: 0, inTok: 0, outTok: 0 },
+    thisMonth: data.months && data.months[month] ? data.months[month] : { cost: 0, inTok: 0, outTok: 0, message: 0, news: 0 },
+    balance: balanceOut
+  };
+}
+
+async function handleSetBalance(env, amount) {
+  let data;
+  try {
+    data = JSON.parse(await env.USAGE_KV.get('openai:usage') || 'null') || {};
+  } catch (error) {
+    data = {};
+  }
+  const baseline = data.total ? data.total.cost : 0;
+  const record = { amount: Number(amount) || 0, baseline, setAt: new Date().toISOString() };
+  await env.USAGE_KV.put('openai:balance', JSON.stringify(record));
+  return { ok: true };
+}
+
 function getOpenAIModel(env) {
   return typeof env.OPENAI_MODEL === 'string' && env.OPENAI_MODEL.trim()
     ? env.OPENAI_MODEL.trim()
@@ -672,7 +768,7 @@ async function recordDailyQuota(env, quota) {
   await env.USAGE_KV.put(quota.key, nextValue, { expirationTtl: 60 * 60 * 36 });
 }
 
-async function generateWithOpenAIChat(prompt, model, apiKey, gatewayUrl) {
+async function generateWithOpenAIChat(prompt, model, apiKey, gatewayUrl, env) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort('timeout'), OPENAI_TIMEOUT_MS);
 
@@ -737,6 +833,8 @@ async function generateWithOpenAIChat(prompt, model, apiKey, gatewayUrl) {
     if (response.status === 429) throw publicError('현재 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 429, null, 'OPENAI_RATE_LIMITED');
     throw publicError('현재 이용량이 많습니다. 잠시 후 다시 시도해주세요.', 503, null, 'OPENAI_UPSTREAM_ERROR');
   }
+
+  if (env) await recordOpenAiUsage(env, model, data?.usage, 'message');
 
   const content = data?.choices?.[0]?.message?.content || '';
   if (!content) {
@@ -987,6 +1085,7 @@ async function summarizeNewsItem(env, item, articleText) {
   const text = await response.text();
   if (!response.ok) throw new Error(`news summarize failed: ${response.status} ${text.slice(0, 200)}`);
   const data = JSON.parse(text);
+  await recordOpenAiUsage(env, model, data.usage, 'news');
   const content = data?.choices?.[0]?.message?.content || '';
   const parsed = JSON.parse(content);
   return {
@@ -1078,6 +1177,7 @@ async function rankCandidates(env, candidates) {
     const text = await res.text();
     if (!res.ok) throw new Error(`rank failed ${res.status}`);
     const data = JSON.parse(text);
+    await recordOpenAiUsage(env, NEWS_RANK_MODEL, data.usage, 'news');
     const parsed = JSON.parse(data?.choices?.[0]?.message?.content || '{}');
     const picks = Array.isArray(parsed.picks) ? parsed.picks : [];
     const ordered = [];

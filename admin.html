@@ -76,6 +76,19 @@
       </section>
 
       <section class="admin-section">
+        <h2>OpenAI 사용량 / 잔액 (추정)</h2>
+        <p class="admin-meta">호출 토큰을 가격표로 환산한 <strong>추정치</strong>입니다. 실제 청구액·잔액은 OpenAI 결제 대시보드를 확인하세요. 잔액을 입력해두면 이후 사용액을 차감해 “예상 남은 금액”을 보여줍니다.</p>
+        <button class="admin-refresh" id="refreshUsage" type="button">새로고침</button>
+        <div id="usageWrap"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <label style="font-size:13px;color:#475467;">현재 잔액/예산 ($):
+            <input id="balanceInput" type="number" step="0.01" min="0" style="width:130px;padding:6px 8px;margin-left:6px;border:1px solid #d0d5dd;border-radius:6px;">
+          </label>
+          <button class="admin-refresh" id="saveBalance" type="button">저장</button>
+        </div>
+      </section>
+
+      <section class="admin-section">
         <h2>베트남 뉴스 관리</h2>
         <p class="admin-meta">매일 자동 생성은 꺼져 있습니다. ① <strong>후보 불러오기</strong>(무료·RSS)로 헤드라인을 받아 AI가 관련성 순으로 추려주면, ② 좋은 기사만 골라 <strong>선택한 기사 생성</strong>을 누르세요. <strong>요약 생성 시에만 API 비용</strong>이 발생합니다. 검토 후 “게시”해야 사이트에 노출됩니다.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
@@ -94,7 +107,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-  <script src="config.js?v=20260706e"></script>
-  <script src="admin.js?v=20260706e"></script>
+  <script src="config.js?v=20260706f"></script>
+  <script src="admin.js?v=20260706f"></script>
 </body>
 </html>

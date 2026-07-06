@@ -921,7 +921,7 @@ async function summarizeNewsItem(env, item, articleText) {
     messages: [
       {
         role: 'system',
-        content: '너는 베트남 현지 뉴스를 베트남에서 사업하는 한국 F&B 사장님을 위해 정리하는 애널리스트다. 반드시 JSON만 반환한다. 본문에 실제로 있는 사실만 쓰고, 없는 수치·날짜·정책 내용은 절대 지어내지 않는다.'
+        content: '너는 베트남에서 사업하는 한국 F&B 사장님을 돕는 실무 컨설턴트다. 반드시 JSON만 반환한다. 본문에 실제로 있는 사실만 쓰고, 없는 수치·날짜·정책 내용은 절대 지어내지 않는다. 막연하고 뻔한 표현("주의해야 한다", "관리가 중요하다")은 금지하고, 구체적인 상황과 예시로 설명한다.'
       },
       {
         role: 'user',
@@ -933,12 +933,13 @@ async function summarizeNewsItem(env, item, articleText) {
           '',
           '규칙:',
           '- 본문/미리보기에 실제로 있는 사실만 사용하고, 없는 내용은 지어내지 마라.',
-          '- summaryKo: 기사 핵심을 빠짐없이 한국어로 정리(누가·무엇을·왜·수치·영향). 5~8문장, 문단으로.',
+          '- summaryKo: 기사 핵심을 3~5문장으로 간결하게 정리(누가·무엇을·왜·영향).',
           '- policyChangeKo: 정책·규정·법·수수료·세금 등 "변경" 기사라면 변경 전과 후를 사실 그대로 대비해서 써라. 형식 예: "이전: ... / 변경 후: ...". 정책 변경이 아니거나 본문에 전/후가 명시되지 않았으면 빈 문자열("").',
-          '- ownerPointKo: 이 소식에 베트남에서 사업하는 한국 사장님이 어떻게 대응하면 좋을지 구체적인 조언 2~3문장.',
+          '- ownerPointKo: 두 부분으로 구성. (1) 이 사안에서 "무엇이 왜 문제가 되는지"를 구체적 예시로 설명한다. 예: 어떤 상황에서 어떤 사장님이 어떤 손해·불이익을 겪을 수 있는지 실제 시나리오로. (2) 그래서 앞으로 무엇을 어떻게 점검·대비해야 하는지 실무적으로. 4~6문장, 뻔한 말 금지.',
+          '- discussionKo: 사장님들이 댓글로 서로 의견을 나누고 싶어지도록 던지는 열린 질문 1~2문장. 이 뉴스 주제와 직접 연결된 실제 고민이어야 한다. 예: "여러분은 거래처 세금계산서를 어떻게 검증하시나요?"',
           '',
           '아래 JSON 형식으로만 답해:',
-          '{"titleKo":"자연스러운 한국어 제목","summaryKo":"","policyChangeKo":"","ownerPointKo":""}'
+          '{"titleKo":"자연스러운 한국어 제목","summaryKo":"","policyChangeKo":"","ownerPointKo":"","discussionKo":""}'
         ].join('\n')
       }
     ],
@@ -965,7 +966,8 @@ async function summarizeNewsItem(env, item, articleText) {
     titleKo: String(parsed.titleKo || '').trim(),
     summaryKo: String(parsed.summaryKo || '').trim(),
     policyChangeKo: String(parsed.policyChangeKo || '').trim(),
-    ownerPointKo: String(parsed.ownerPointKo || '').trim()
+    ownerPointKo: String(parsed.ownerPointKo || '').trim(),
+    discussionKo: String(parsed.discussionKo || '').trim()
   };
 }
 
@@ -1013,6 +1015,7 @@ async function generateNewsDrafts(env) {
         summaryKo: summary.summaryKo,
         policyChangeKo: summary.policyChangeKo,
         ownerPointKo: summary.ownerPointKo,
+        discussionKo: summary.discussionKo,
         createdAt: new Date().toISOString()
       });
     } catch (error) {

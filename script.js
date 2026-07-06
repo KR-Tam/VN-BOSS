@@ -1041,11 +1041,15 @@ function renderNewsCards(news) {
       ? `<div class="news-point"><span class="news-point-title">💡 사장님 대응 포인트</span><p>${escapeHtmlText(item.ownerPointKo)}</p></div>`
       : '';
     const id = escapeHtmlText(item.id);
+    const discussion = item.discussionKo
+      ? `<div class="news-discussion"><span class="news-discussion-title">🗣️ 이야기 나눠보기</span><p>${escapeHtmlText(item.discussionKo)}</p><button class="news-discussion-cta" type="button" data-comment-toggle="${id}">댓글로 의견 남기기</button></div>`
+      : '';
     return `<article class="news-card" data-news-id="${id}">
       <h3>${escapeHtmlText(item.titleKo)}</h3>
       <p class="news-summary">${escapeHtmlText(item.summaryKo)}</p>
       ${policy}
       ${point}
+      ${discussion}
       <div class="news-meta">
         <span class="news-source">출처: ${escapeHtmlText(item.sourceName)}</span>
         <a class="news-link" href="${escapeHtmlText(item.link)}" target="_blank" rel="noopener noreferrer">원문 보기</a>

@@ -202,6 +202,11 @@ label span em{font-style:normal;color:var(--muted);font-weight:700}
 .news-card .news-point{margin:0;padding:12px 14px;border-radius:8px;background:var(--soft)}
 .news-card .news-point-title{display:block;margin-bottom:4px;color:var(--accent-dark);font-size:13px;font-weight:800}
 .news-card .news-point p{margin:0;color:#2f4a44;font-size:14px;line-height:1.6;white-space:pre-wrap;font-weight:600}
+.news-card .news-discussion{margin:0;padding:12px 14px;border-radius:8px;border:1px dashed var(--accent);background:#fff}
+.news-card .news-discussion-title{display:block;margin-bottom:4px;color:var(--accent-dark);font-size:13px;font-weight:800}
+.news-card .news-discussion p{margin:0 0 10px;color:#24312c;font-size:14px;line-height:1.6;white-space:pre-wrap}
+.news-card .news-discussion-cta{border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:800;font-size:13px;min-height:36px;padding:0 14px;cursor:pointer}
+.news-card .news-discussion-cta:hover{background:var(--accent-dark)}
 .news-card .news-meta{margin:auto 0 0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:13px}
 .news-card .news-source{font-weight:800}
 .news-card .news-link{display:inline-flex;align-items:center;min-height:38px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--accent);font-weight:800;font-size:13px}

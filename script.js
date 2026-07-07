@@ -1036,7 +1036,7 @@ maybeShowInstallFab();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch((error) => console.error('[VN Boss] SW register failed:', error));
+    navigator.serviceWorker.register('/sw.js').catch((error) => console.error('[VN Boss] SW register failed:', error));
   });
 }
 
@@ -1074,6 +1074,11 @@ function getNewsThumbImage(index) {
   return images[index % images.length];
 }
 
+function getNewsDetailUrl(item) {
+  const id = String(item?.id || '').trim();
+  return id ? `/news/${encodeURIComponent(id)}` : '/news';
+}
+
 function renderNewsCards(news) {
   if (!newsGrid) return;
   if (!Array.isArray(news) || !news.length) {
@@ -1087,7 +1092,8 @@ function renderNewsCards(news) {
     const dateStr = formatNewsDate(item.pubDate || item.publishedAt);
     const category = getNewsCategory(item);
     const thumb = getNewsThumbImage(index);
-    return `<article class="news-card" data-news-id="${id}">
+    const detailUrl = escapeHtmlText(getNewsDetailUrl(item));
+    return `<a class="news-card news-card-link" href="${detailUrl}" data-news-id="${id}" aria-label="${escapeHtmlText(item.titleKo)} 기사 보기">
       <div class="news-thumb" style="--thumb-image:url('${thumb}')"><span>${escapeHtmlText(category)}</span></div>
       <div class="news-content">
         <span class="news-category">${escapeHtmlText(category)}</span>
@@ -1095,17 +1101,12 @@ function renderNewsCards(news) {
         <p class="news-summary">${escapeHtmlText(item.summaryKo)}</p>
         <div class="news-meta">
           <span class="news-source">${dateStr || escapeHtmlText(item.sourceName)}</span>
-          <a class="news-link" href="${escapeHtmlText(item.link)}" target="_blank" rel="noopener noreferrer">원문</a>
+          <span class="news-arrow" aria-hidden="true">›</span>
         </div>
       </div>
-      <div class="news-comments">
-        <button class="news-comment-toggle" type="button" data-comment-toggle="${id}">댓글</button>
-        <div class="news-comment-panel" data-comment-panel="${id}" style="display:none;"></div>
-      </div>
-    </article>`;
+    </a>${!limit && (index + 1) % 5 === 0 ? '<div class="ad-slot news-list-ad">AdSlot · 뉴스 목록</div>' : ''}`;
   }).join('');
 }
-
 async function getMemberIdToken() {
   if (!firebaseAuth || !firebaseAuth.currentUser) return '';
   try {
@@ -1254,6 +1255,118 @@ if (newsGrid) {
   });
 }
 
+
+const newsDetailRoot = document.querySelector('#newsDetail');
+
+function getNewsIdFromPath() {
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  if (parts[0] !== 'news' || !parts[1]) return '';
+  try {
+    return decodeURIComponent(parts[1]);
+  } catch (error) {
+    return parts[1];
+  }
+}
+
+function setMetaTag(selector, attr, value) {
+  if (!value) return;
+  let tag = document.head.querySelector(selector);
+  if (!tag) {
+    tag = document.createElement('meta');
+    const property = selector.match(/property="([^"]+)"/)?.[1];
+    const name = selector.match(/name="([^"]+)"/)?.[1];
+    if (property) tag.setAttribute('property', property);
+    if (name) tag.setAttribute('name', name);
+    document.head.appendChild(tag);
+  }
+  tag.setAttribute(attr, value);
+}
+
+function setCanonical(url) {
+  let link = document.head.querySelector('link[rel="canonical"]');
+  if (!link) {
+    link = document.createElement('link');
+    link.setAttribute('rel', 'canonical');
+    document.head.appendChild(link);
+  }
+  link.setAttribute('href', url);
+}
+
+function renderNewsDetail(item, related) {
+  if (!newsDetailRoot) return;
+  const category = getNewsCategory(item);
+  const dateStr = formatNewsDate(item.pubDate || item.publishedAt);
+  const thumb = getNewsThumbImage(0);
+  const title = item.titleKo || 'VN Boss 뉴스';
+  const description = item.metaDescriptionKo || item.summaryKo || '';
+  const canonical = `${window.location.origin}${getNewsDetailUrl(item)}`;
+  document.title = `${title} - VN Boss`;
+  setMetaTag('meta[name="description"]', 'content', description);
+  setMetaTag('meta[property="og:title"]', 'content', title);
+  setMetaTag('meta[property="og:description"]', 'content', description);
+  setCanonical(canonical);
+
+  const ld = document.createElement('script');
+  ld.type = 'application/ld+json';
+  ld.textContent = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
+    headline: title,
+    description,
+    datePublished: item.pubDate || item.publishedAt || item.createdAt || '',
+    dateModified: item.publishedAt || item.createdAt || item.pubDate || '',
+    mainEntityOfPage: canonical,
+    image: [thumb],
+    publisher: { '@type': 'Organization', name: 'VN Boss' }
+  });
+  document.head.appendChild(ld);
+
+  const relatedHtml = related.slice(0, 3).map((other) => {
+    const otherCategory = getNewsCategory(other);
+    return `<a class="summary-card" href="${escapeHtmlText(getNewsDetailUrl(other))}"><span>${escapeHtmlText(otherCategory)}</span><h3>${escapeHtmlText(other.titleKo)}</h3><p>${escapeHtmlText(other.summaryKo)}</p></a>`;
+  }).join('');
+
+  newsDetailRoot.innerHTML = `<article class="article-detail">
+    <div class="article-hero-image" style="--thumb-image:url('${thumb}')"><span>${escapeHtmlText(category)}</span></div>
+    <p class="eyebrow">${escapeHtmlText(category)}</p>
+    <h1>${escapeHtmlText(title)}</h1>
+    <p class="article-meta">${escapeHtmlText(dateStr || item.sourceName || 'VN Boss')}</p>
+    <p class="article-summary">${escapeHtmlText(item.summaryKo)}</p>
+    ${item.whyImportantKo ? `<section><h2>${escapeHtmlText(item.whyTitleKo || '왜 중요한가')}</h2><p>${escapeHtmlText(item.whyImportantKo)}</p></section>` : ''}
+    ${item.policyChangeKo ? `<section><h2>정책 변경 전/후</h2><p>${escapeHtmlText(item.policyChangeKo)}</p></section>` : ''}
+    ${item.officialTextKo ? `<section><h2>관련 법령 원문</h2><p>${escapeHtmlText(item.officialTextKo)}</p></section>` : ''}
+    ${item.ownerPointKo ? `<section><h2>${escapeHtmlText(item.pointTitleKo || '체크리스트')}</h2><p>${escapeHtmlText(item.ownerPointKo)}</p></section>` : ''}
+    ${item.discussionKo ? `<section><h2>이야기 나눠보기</h2><p>${escapeHtmlText(item.discussionKo)}</p></section>` : ''}
+    <div class="article-source"><a href="${escapeHtmlText(item.link)}" target="_blank" rel="noopener noreferrer">원문 출처 보기</a></div>
+    <div class="ad-slot" aria-label="광고 영역">AdSlot · 기사 본문 하단</div>
+  </article>
+  <section class="home-preview related-news"><div class="section-heading split-heading"><div><p class="eyebrow">관련 기사</p><h2>같이 볼 뉴스</h2></div><a class="more-link" href="/news">뉴스 더보기</a></div><div class="summary-grid">${relatedHtml}</div></section>`;
+}
+
+async function loadNewsDetail() {
+  if (!newsDetailRoot) return;
+  const id = getNewsIdFromPath();
+  if (!id) {
+    newsDetailRoot.innerHTML = '<p class="news-empty">기사 주소를 확인해주세요.</p>';
+    return;
+  }
+  try {
+    const status = getConfigStatus();
+    const base = status.endpoint.replace(/\/api\/generate$/, '');
+    const response = await fetch(`${base}/api/news`);
+    const data = await response.json();
+    const list = Array.isArray(data.news) ? data.news : [];
+    const item = list.find((entry) => String(entry.id) === id);
+    if (!item) {
+      newsDetailRoot.innerHTML = '<p class="news-empty">기사를 찾지 못했습니다.</p>';
+      return;
+    }
+    renderNewsDetail(item, list.filter((entry) => String(entry.id) !== id));
+  } catch (error) {
+    console.error('[VN Boss] Failed to load news detail:', error);
+    newsDetailRoot.innerHTML = '<p class="news-empty">기사를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</p>';
+  }
+}
 async function loadPublicNews() {
   if (!newsGrid) return;
   try {
@@ -1269,6 +1382,7 @@ async function loadPublicNews() {
 }
 
 loadPublicNews();
+loadNewsDetail();
 
 window.VNBossPromptBuilder = {
   getNoticeInputs,

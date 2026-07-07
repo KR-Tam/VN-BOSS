@@ -6,6 +6,7 @@ const generateButton = document.querySelector('#generateButton');
 const usageBox = document.querySelector('#usageBox');
 const memberPill = document.querySelector('#memberPill');
 const authButton = document.querySelector('#authButton');
+const bottomProfileButton = document.querySelector('#bottomProfileButton');
 const loginModal = document.querySelector('#loginModal');
 const modalClose = document.querySelector('#modalClose');
 const modalLoginButton = document.querySelector('#modalLoginButton');
@@ -875,6 +876,10 @@ if (profileSaveButton) profileSaveButton.addEventListener('click', () => {
 });
 if (profileLogoutButton) profileLogoutButton.addEventListener('click', signOutMember);
 if (editProfileButton) editProfileButton.addEventListener('click', openProfileModal);
+if (bottomProfileButton) bottomProfileButton.addEventListener('click', () => {
+  if (isMember()) openProfileModal();
+  else openLoginModal('마이페이지는 로그인 후 가능합니다');
+});
 if (logoutButton) logoutButton.addEventListener('click', signOutMember);
 if (historyManageButton) historyManageButton.addEventListener('click', openHistoryModal);
 if (historyModalClose) historyModalClose.addEventListener('click', closeHistoryModal);
@@ -1034,44 +1039,49 @@ function formatNewsDate(value) {
   return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
 }
 
+function getNewsCategory(item) {
+  const text = `${item.titleKo || ''} ${item.summaryKo || ''} ${item.srcTitle || ''}`;
+  if (/세금|세무|송장|부가세|법인세|invoice|tax/i.test(text)) return '세금·정책';
+  if (/식품|위생|F&B|요식|restaurant|food/i.test(text)) return 'F&B 운영';
+  if (/임대|상권|매장|부동산|rent/i.test(text)) return '상권 정보';
+  if (/노무|직원|급여|근로|labor/i.test(text)) return '노무';
+  return '베트남 뉴스';
+}
+
+function getNewsThumbImage(index) {
+  const images = [
+    'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?auto=format&fit=crop&w=400&q=70',
+    'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=400&q=70',
+    'https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=400&q=70',
+    'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=400&q=70'
+  ];
+  return images[index % images.length];
+}
+
 function renderNewsCards(news) {
   if (!newsGrid) return;
   if (!Array.isArray(news) || !news.length) {
     newsGrid.innerHTML = '<p class="news-empty">아직 게시된 뉴스가 없습니다. 곧 업데이트됩니다.</p>';
     return;
   }
-  newsGrid.innerHTML = news.map((item) => {
-    const why = item.whyImportantKo
-      ? `<div class="news-why"><span class="news-why-title">🔎 ${escapeHtmlText(item.whyTitleKo || '왜 중요한가')}</span><p>${escapeHtmlText(item.whyImportantKo)}</p></div>`
-      : '';
-    const policy = item.policyChangeKo
-      ? `<div class="news-policy"><span class="news-policy-title">📋 정책 변경 전/후</span><p>${escapeHtmlText(item.policyChangeKo)}</p></div>`
-      : '';
-    const official = item.officialTextKo
-      ? `<div class="news-official"><span class="news-official-title">📜 관련 법령 원문 (비공식 번역)</span><p>${escapeHtmlText(item.officialTextKo)}</p><span class="news-official-note">※ 비공식 번역으로 법적 효력이 없습니다. 정확한 내용은 원문을 확인하세요.</span></div>`
-      : '';
-    const point = item.ownerPointKo
-      ? `<div class="news-point"><span class="news-point-title">✅ ${escapeHtmlText(item.pointTitleKo || '체크리스트 · 대응 방안')}</span><p>${escapeHtmlText(item.ownerPointKo)}</p></div>`
-      : '';
+  newsGrid.innerHTML = news.map((item, index) => {
     const id = escapeHtmlText(item.id);
     const dateStr = formatNewsDate(item.pubDate || item.publishedAt);
-    const discussion = item.discussionKo
-      ? `<div class="news-discussion"><span class="news-discussion-title">🗣️ 이야기 나눠보기</span><p>${escapeHtmlText(item.discussionKo)}</p><button class="news-discussion-cta" type="button" data-comment-toggle="${id}">댓글로 의견 남기기</button></div>`
-      : '';
+    const category = getNewsCategory(item);
+    const thumb = getNewsThumbImage(index);
     return `<article class="news-card" data-news-id="${id}">
-      <h3>${escapeHtmlText(item.titleKo)}</h3>
-      <p class="news-summary">${escapeHtmlText(item.summaryKo)}</p>
-      ${why}
-      ${policy}
-      ${official}
-      ${point}
-      ${discussion}
-      <div class="news-meta">
-        <span class="news-source">출처: ${escapeHtmlText(item.sourceName)}${dateStr ? ' · ' + dateStr : ''}</span>
-        <a class="news-link" href="${escapeHtmlText(item.link)}" target="_blank" rel="noopener noreferrer">원문 보기</a>
+      <div class="news-thumb" style="--thumb-image:url('${thumb}')"><span>${escapeHtmlText(category)}</span></div>
+      <div class="news-content">
+        <span class="news-category">${escapeHtmlText(category)}</span>
+        <h3>${escapeHtmlText(item.titleKo)}</h3>
+        <p class="news-summary">${escapeHtmlText(item.summaryKo)}</p>
+        <div class="news-meta">
+          <span class="news-source">${dateStr || escapeHtmlText(item.sourceName)}</span>
+          <a class="news-link" href="${escapeHtmlText(item.link)}" target="_blank" rel="noopener noreferrer">원문</a>
+        </div>
       </div>
       <div class="news-comments">
-        <button class="news-comment-toggle" type="button" data-comment-toggle="${id}">💬 댓글</button>
+        <button class="news-comment-toggle" type="button" data-comment-toggle="${id}">댓글</button>
         <div class="news-comment-panel" data-comment-panel="${id}" style="display:none;"></div>
       </div>
     </article>`;

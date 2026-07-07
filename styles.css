@@ -326,3 +326,23 @@ select,input,textarea{border-radius:14px;min-height:52px;background:#fff}
 @media(min-width:960px){
   .hero-banner{min-height:380px}.hero h1{font-size:52px}.news-grid{grid-template-columns:repeat(3,1fr)}.news-card{grid-template-columns:1fr}.news-thumb{grid-row:auto;min-height:150px}.news-comments{grid-column:auto}
 }
+/* Split-page layout */
+.nav-links a.active{background:#e5f4ef;color:var(--accent)}
+.page-hero{width:calc(100% - 32px);margin:0 auto;padding:28px 0 18px}
+.page-hero h1{margin:0;font-size:30px;line-height:1.18;letter-spacing:0;color:#17211d}
+.page-hero p:not(.eyebrow){margin:10px 0 0;color:var(--muted);font-size:15px;line-height:1.55}
+.home-preview{width:100%;padding:28px 0;background:#f4f6f5;border-top:1px solid #edf1ee}
+.split-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:14px}
+.split-heading::after{display:none!important}
+.more-link{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:0 12px;border-radius:999px;background:#e7f5f0;color:var(--accent);font-size:13px;font-weight:900;white-space:nowrap}
+.summary-grid{width:calc(100% - 32px);margin:0 auto;display:grid;grid-template-columns:1fr;gap:12px}
+.summary-card{display:block;min-height:122px;padding:16px;border:1px solid #e5ebe7;border-radius:18px;background:#fff;box-shadow:0 8px 20px rgba(20,34,31,.07)}
+.summary-card span{display:inline-flex;margin-bottom:9px;padding:3px 8px;border-radius:999px;background:#e8f5f0;color:var(--accent);font-size:11px;font-weight:900;line-height:1.4}
+.summary-card h3{margin:0 0 7px;font-size:16px;line-height:1.35;color:#17211d;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.summary-card p{margin:0;color:#66736d;font-size:13px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.page-list{padding-top:12px}
+.full-list{padding-bottom:28px}
+@media(min-width:700px){.page-hero{width:min(1200px,calc(100% - 32px));padding:46px 0 24px}.page-hero h1{font-size:44px}.summary-grid{width:min(1200px,calc(100% - 32px));grid-template-columns:repeat(2,1fr);gap:16px}.home-preview{padding:42px 0}}
+@media(min-width:960px){.summary-grid{grid-template-columns:repeat(3,1fr)}.full-list{grid-template-columns:repeat(4,1fr)}}
+.page-actions{width:calc(100% - 32px);margin:4px auto 30px;display:grid;grid-template-columns:1fr;gap:10px}.page-actions .primary-link,.page-actions .secondary-link{width:100%;border-radius:15px}.page-actions button{border:0}
+@media(min-width:700px){.page-actions{width:min(520px,calc(100% - 32px));grid-template-columns:1fr 1fr}}

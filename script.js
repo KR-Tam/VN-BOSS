@@ -536,16 +536,19 @@ function formatConnectionError() {
 }
 
 function setStatus(message, type = '') {
+  if (!statusBox) return;
   statusBox.textContent = message || '';
   statusBox.className = `status-box${message ? ' show' : ''}${type ? ` ${type}` : ''}`;
 }
 
 function setLoading(isLoading) {
+  if (!generateButton) return;
   generateButton.disabled = isLoading;
   generateButton.textContent = isLoading ? '잠시만 기다려주세요.' : '메시지 작성';
 }
 
 function renderResult(result) {
+  if (!koreanResult || !vietnameseResult) return;
   koreanResult.textContent = result.korean;
   vietnameseResult.textContent = result.vietnamese;
   koreanResult.classList.remove('empty');
@@ -826,7 +829,7 @@ showGuestExample();
 if (useDeadlineCheck) useDeadlineCheck.addEventListener('change', updateDeadlineVisibility);
 updateTargetCustomVisibility();
 if (targetSelect) targetSelect.addEventListener('change', updateTargetCustomVisibility);
-form.addEventListener('submit', handleGenerate);
+if (form) form.addEventListener('submit', handleGenerate);
 
 document.querySelectorAll('[data-copy]').forEach((button) => {
   button.addEventListener('click', () => {
@@ -897,6 +900,19 @@ function handleHistoryItemClick(event) {
 }
 if (historyList) historyList.addEventListener('click', handleHistoryItemClick);
 if (historyModalList) historyModalList.addEventListener('click', handleHistoryItemClick);
+document.querySelectorAll('[data-open-profile]').forEach((button) => {
+  button.addEventListener('click', () => {
+    if (isMember()) openProfileModal();
+    else openLoginModal('마이페이지는 로그인 후 가능합니다');
+  });
+});
+
+document.querySelectorAll('[data-open-history]').forEach((button) => {
+  button.addEventListener('click', () => {
+    if (isMember()) openHistoryModal();
+    else openLoginModal('기록 관리는 로그인 후 가능합니다');
+  });
+});
 
 function isStandaloneMode() {
   return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
@@ -1064,7 +1080,9 @@ function renderNewsCards(news) {
     newsGrid.innerHTML = '<p class="news-empty">아직 게시된 뉴스가 없습니다. 곧 업데이트됩니다.</p>';
     return;
   }
-  newsGrid.innerHTML = news.map((item, index) => {
+  const limit = Number(newsGrid.dataset.limit || 0);
+  const visibleNews = limit > 0 ? news.slice(0, limit) : news;
+  newsGrid.innerHTML = visibleNews.map((item, index) => {
     const id = escapeHtmlText(item.id);
     const dateStr = formatNewsDate(item.pubDate || item.publishedAt);
     const category = getNewsCategory(item);

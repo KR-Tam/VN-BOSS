@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VN Boss</title>
-  <link rel="stylesheet" href="styles.css?v=20260707b">
-  <link rel="manifest" href="manifest.json?v=20260703b">
+  <title>가이드 - VN Boss</title>
+  <link rel="stylesheet" href="../styles.css?v=20260707b">
+  <link rel="manifest" href="../manifest.json?v=20260703b">
   <meta name="theme-color" content="#087f6f">
-  <link rel="icon" href="icon-192.png">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="icon" href="../icon-192.png">
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -25,7 +25,7 @@
         </div>
       </div>
       <div class="nav-links" aria-label="카테고리 메뉴">
-        <a class="active" href="/">홈</a>
+        <a href="/">홈</a>
         <a href="/news">뉴스</a>
         <a href="/guide">가이드</a>
         <a href="/business">비즈니스 정보</a>
@@ -37,63 +37,14 @@
         <button class="secondary-link nav-action" id="editProfileButton" type="button" style="display:none;">회원정보변경</button>
         <button class="secondary-link nav-action" id="historyManageButton" type="button" style="display:none;">기록 관리</button>
         <button class="secondary-link nav-action" id="logoutButton" type="button" style="display:none;">로그아웃</button>
-        <a href="admin.html" id="adminLink" style="display:none;">관리자</a>
+        <a href="../admin.html" id="adminLink" style="display:none;">관리자</a>
         <button class="auth-button" id="authButton" type="button">Google로 시작</button>
       </div>
     </nav>
   </header>
   <main>
-    <section class="hero" id="home">
-      <div class="hero-banner">
-        <p class="eyebrow">업무 메시지</p>
-        <h1>한국 사장님을 위한 베트남어 업무 메시지 작성</h1>
-        <p class="hero-copy">직원에게 전달할 내용을 한국어로 입력하면, 베트남어 업무 메시지로 자연스럽게 정리해드립니다.</p>
-        <p class="hero-date">2026.07 최신 업데이트</p>
-        <div class="hero-actions">
-          <a class="primary-link" href="/business">메시지 작성하기</a>
-        </div>
-      </div>
-    </section>
-
-    <section class="features" id="features" aria-label="주요 기능">
-      <a class="feature-card" href="/business"><span class="feature-icon">文</span><strong>업무 번역</strong></a>
-      <a class="feature-card" href="/news"><span class="feature-icon">N</span><strong>최신 뉴스</strong></a>
-      <a class="feature-card" href="/guide"><span class="feature-icon">G</span><strong>가이드</strong></a>
-      <a class="feature-card" href="/business"><span class="feature-icon">B</span><strong>비즈니스 정보</strong></a>
-      <a class="feature-card" href="/community"><span class="feature-icon">C</span><strong>커뮤니티</strong></a>
-    </section>
-
-    <section class="home-preview news-section">
-      <div class="section-heading split-heading">
-        <div><p class="eyebrow">최신 뉴스</p><h2>베트남 F&amp;B · 정책 소식</h2></div>
-        <a class="more-link" href="/news">더보기</a>
-      </div>
-      <div class="news-grid" id="newsGrid" data-limit="5"><p class="news-empty">뉴스를 불러오는 중입니다...</p></div>
-    </section>
-
-    <section class="home-preview">
-      <div class="section-heading split-heading">
-        <div><p class="eyebrow">인기 가이드</p><h2>사장님이 자주 찾는 자료</h2></div>
-        <a class="more-link" href="/guide">더보기</a>
-      </div>
-      <div class="summary-grid">
-        <a class="summary-card" href="/guide"><span>계약</span><h3>50대 50 지분 투자 계약서 체크포인트</h3><p>공동 창업 전에 확인해야 할 핵심 항목을 정리했습니다.</p></a>
-        <a class="summary-card" href="/guide"><span>입점</span><h3>베트남 대형몰 입점 준비</h3><p>임대 조건, 보증금, 매출 수수료 확인 흐름을 봅니다.</p></a>
-        <a class="summary-card" href="/guide"><span>운영</span><h3>매장 오픈 전 직원 안내문</h3><p>오픈 전 반복 안내가 필요한 업무 항목을 정리합니다.</p></a>
-      </div>
-    </section>
-
-    <section class="home-preview">
-      <div class="section-heading split-heading">
-        <div><p class="eyebrow">커뮤니티</p><h2>최근 이야기</h2></div>
-        <a class="more-link" href="/community">더보기</a>
-      </div>
-      <div class="summary-grid">
-        <a class="summary-card" href="/community"><span>질문</span><h3>현지 직원에게 업무 지시할 때 가장 어려운 표현은?</h3><p>자주 헷갈리는 표현을 모아 공유합니다.</p></a>
-        <a class="summary-card" href="/community"><span>공유</span><h3>Zalo로 보낼 공지문 톤 조절 팁</h3><p>부드럽지만 기준이 분명한 문장 예시를 나눕니다.</p></a>
-        <a class="summary-card" href="/community"><span>운영</span><h3>오픈 마감 체크리스트 운영 경험</h3><p>작은 매장에서 바로 쓸 수 있는 운영 이야기를 모았습니다.</p></a>
-      </div>
-    </section>
+    <section class="page-hero"><p class="eyebrow">가이드</p><h1>베트남 사업 운영 가이드</h1><p>창업, 계약, 입점, 직원 운영에 필요한 자료를 모았습니다.</p></section>
+    <section class="home-preview"><div class="summary-grid full-list"><article class="summary-card"><span>계약</span><h3>50대 50 지분 투자 계약서 표준 체크</h3><p>동업 전 역할, 지분, 의사결정, 분쟁 상황을 미리 정리합니다.</p></article><article class="summary-card"><span>입점</span><h3>기가몰·대형몰 입점 준비 가이드</h3><p>임대료, 보증금, 매출 수수료, 인테리어 기준을 확인합니다.</p></article><article class="summary-card"><span>직원</span><h3>베트남 직원 업무 지시문 작성법</h3><p>한국식 표현을 현지 직원이 이해하기 쉬운 업무 문장으로 바꿉니다.</p></article><article class="summary-card"><span>세무</span><h3>송장과 비용 증빙 기본 흐름</h3><p>매장 운영비를 정리할 때 필요한 기본 증빙 흐름을 봅니다.</p></article></div></section>
   </main>
   <div class="modal-backdrop" id="loginModal" aria-hidden="true">
     <div class="login-modal" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle">
@@ -151,16 +102,16 @@
 
 
   <nav class="bottom-nav" aria-label="모바일 하단 메뉴">
-    <a class="active" href="/"><span>⌂</span><strong>홈</strong></a>
+    <a href="/"><span>⌂</span><strong>홈</strong></a>
     <a href="/news"><span>▤</span><strong>뉴스</strong></a>
-    <a href="/guide"><span>□</span><strong>가이드</strong></a>
+    <a class="active" href="/guide"><span>□</span><strong>가이드</strong></a>
     <a href="/community"><span>◌</span><strong>커뮤니티</strong></a>
     <a href="/mypage"><span>♙</span><strong>마이페이지</strong></a>
   </nav>
-  <footer class="footer"><p>VN Boss - 베트남 직원에게 전달할 업무 메시지 작성 도구 · <a href="about.html" style="text-decoration:underline;">소개</a> · <a href="privacy.html" style="text-decoration:underline;">개인정보처리방침</a></p></footer>
+  <footer class="footer"><p>VN Boss - 베트남 직원에게 전달할 업무 메시지 작성 도구 · <a href="../about.html" style="text-decoration:underline;">소개</a> · <a href="../privacy.html" style="text-decoration:underline;">개인정보처리방침</a></p></footer>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-  <script src="config.js?v=20260706k"></script>
-  <script src="script.js?v=20260707b"></script>
+  <script src="../config.js?v=20260706k"></script>
+  <script src="../script.js?v=20260707b"></script>
 </body>
 </html>

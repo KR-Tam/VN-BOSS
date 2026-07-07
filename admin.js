@@ -314,10 +314,10 @@ function formatNewsDate(value) {
 function renderNewsCard(item, isDraft) {
   const dateStr = formatNewsDate(item.pubDate || item.publishedAt);
   const meta = `${escapeHtml(item.sourceName)}${dateStr ? ' · ' + dateStr : ''} · <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">원문 링크</a>`;
-  const why = item.whyImportantKo ? `<p class="news-body" style="background:#eef4ff;padding:8px 10px;border-radius:6px;"><strong>🔎 왜 중요한가:</strong> ${escapeHtml(item.whyImportantKo)}</p>` : '';
+  const why = item.whyImportantKo ? `<p class="news-body" style="background:#eef4ff;padding:8px 10px;border-radius:6px;"><strong>🔎 ${escapeHtml(item.whyTitleKo || '왜 중요한가')}:</strong> ${escapeHtml(item.whyImportantKo)}</p>` : '';
   const policy = item.policyChangeKo ? `<p class="news-body" style="background:#fff7e8;padding:8px 10px;border-radius:6px;"><strong>📋 정책 전/후:</strong> ${escapeHtml(item.policyChangeKo)}</p>` : '';
   const official = item.officialTextKo ? `<p class="news-body" style="background:#f3f4f6;padding:8px 10px;border-radius:6px;"><strong>📜 법령 원문(비공식 번역):</strong> ${escapeHtml(item.officialTextKo)}</p>` : '';
-  const point = item.ownerPointKo ? `<p class="news-point">💡 ${escapeHtml(item.ownerPointKo)}</p>` : '';
+  const point = item.ownerPointKo ? `<p class="news-point">✅ ${escapeHtml(item.pointTitleKo || '체크리스트 · 대응 방안')}: ${escapeHtml(item.ownerPointKo)}</p>` : '';
   const discussion = item.discussionKo ? `<p class="news-point" style="background:#eef6f3;">🗣️ 논점: ${escapeHtml(item.discussionKo)}</p>` : '';
   const actions = isDraft
     ? `<div class="news-actions"><button class="news-publish" data-news-publish="${item.id}">게시</button><button data-news-regen="${item.id}">재생성</button><button class="news-danger" data-news-reject="${item.id}">삭제</button></div>`

@@ -4,7 +4,7 @@ const DEFAULT_AI_GATEWAY_ACCOUNT_ID = 'bd0c3fba48bff8f5bec8f88cd625c719';
 const DEFAULT_AI_GATEWAY_ID = 'vnboss-gateway';
 const OPENAI_TIMEOUT_MS = 45000;
 // Bump this on every worker deploy so /api/version confirms what is actually live.
-const WORKER_VERSION = '2026-07-06-news-interpreter';
+const WORKER_VERSION = '2026-07-06-news-interpreter2';
 
 // Estimated OpenAI prices (USD per 1M tokens). Edit if OpenAI pricing changes.
 const OPENAI_PRICING = {
@@ -1102,14 +1102,19 @@ async function callSummarize(env, item, articleText, model) {
           '각 필드 작성 규칙(뉴스 성격에 맞게 문장 길이·톤은 매번 다르게):',
           '- titleKo: 담백하고 정확한 제목. 과장·클릭베이트 금지.',
           '- summaryKo(핵심 팩트): 완전히 재작성한 3~4문장 요약. 원문 문장 복제 금지, 원문에 없는 내용 금지. 여러 항목(대상 업종·리스크 유형 등)이 나열되면 하나로 줄이지 말고 모두 포함(예: 전자상거래·디지털 비즈니스·이전가격·송장 리스크·자금 흐름 등).',
-          '- whyImportantKo(왜 중요한가): 이 뉴스가 베트남 비즈니스 환경과 사업자에게 미치는 영향·의미를 분석한다. 원문에 없는 "해석"을 더하되 사실은 지어내지 않는다. 2~4문장.',
+          '- whyTitleKo: 영향 분석 섹션의 짧은 소제목을 기사 성격에 맞게 지어라(예: "지금 리스크인 이유", "지금 준비할 것", "체크포인트"). 매 기사 똑같이 반복하지 마라.',
+          '- whyImportantKo(영향 분석): 이 뉴스가 베트남 비즈니스 환경, 특히 원문에 언급된 구체적 업종·대상에 미치는 영향을 쓴다. "누구나 붙일 수 있는 뻔한 문장" 금지 — 반드시 원문에 나온 구체적 사실(지역·업종·금액·기한 등)과 연결하라. 예(O): "식음료·미용·건강관리처럼 현금 거래 비중이 높은 업종이라면…". 예(X, 금지): "사업자는 항상 세금에 유의해야 합니다". 2~4문장.',
           '- policyChangeKo: 정책·규정·수수료·세금 등 "변경" 기사면 변경 전과 후를 사실 그대로 대비("이전: … / 변경 후: …"). 변경 기사가 아니거나 전/후가 없으면 빈 문자열("").',
           '- officialTextKo: 본문에 정부 공식 법령 조문(예: "Điều 18 Thông tư 78/2014/TT-BTC")이 인용돼 있으면 그 "조문 자체"만 충실히 번역하고(기자 해설 제외) 앞에 어느 법령 몇 조인지 표기. 없으면 빈 문자열("").',
-          '- ownerPointKo(사업자 체크리스트·대응 방안): 구체적이고 실행 가능한 조언. 가능하면 "이번 달 안에 확인할 서류 3가지"처럼 행동·목록 중심으로. 세무·법률 사안이면 "전문가 확인 권장"을 넣는다. 가상 예시는 "예를 들어 ~수 있습니다"로 가정임을 드러내고, 기사에 없는 특정 인물·업소를 사실인 것처럼 쓰지 마라. "중요하다/주의가 필요하다" 같은 막연한 마무리 금지.',
+          '- pointTitleKo: 대응 섹션의 짧은 소제목을 기사 성격에 맞게 지어라(예: "대응 체크리스트", "지금 준비할 것", "확인할 서류").',
+          '- ownerPointKo(대응 체크리스트): 구체적이고 실행 가능한 조언 2~4개. 반드시 원문의 구체적 내용(업종·금액·기한 등)에 근거하고, 범용 조언 나열은 금지. "이번 달 안에 확인할 서류 3가지"처럼 행동 중심으로. 대응할 게 없는 단순 정보성 뉴스면 빈 문자열("")로 둬도 된다. 세무·법률·행정 관련 뉴스면 맨 끝 줄에 반드시 다음과 유사한 면책 문구를 붙여라: "※ 위 내용은 참고용 요약이며, 실제 처리는 반드시 담당 세무사/변호사 등 전문가와 확인하시기 바랍니다." 막연한 마무리("중요하다/주의가 필요하다") 금지.',
           '- discussionKo: 이 뉴스와 직접 연결된, 사장님들이 댓글로 의견을 나누고 싶어지는 열린 질문 1~2문장.',
           '',
+          '[다양성] 소제목·순서·톤을 모든 기사에 토씨 하나 안 틀리고 반복하지 마라. 뉴스 성격에 따라 필요 없는 섹션은 빈 문자열로 생략하라(단순 정보성 뉴스는 체크리스트 생략 가능). 짧은 경고형 문장과 설명형 문장을 섞어 길이·톤에 변화를 줘라.',
+          '[금지] 원문에 없는 업종·수치를 임의로 확대 해석하지 마라(특정 업종만 언급된 뉴스를 "모든 업종에 해당"처럼 일반화 금지).',
+          '',
           '아래 JSON 형식으로만 답해:',
-          '{"titleKo":"","summaryKo":"","whyImportantKo":"","policyChangeKo":"","officialTextKo":"","ownerPointKo":"","discussionKo":""}'
+          '{"titleKo":"","summaryKo":"","whyTitleKo":"","whyImportantKo":"","policyChangeKo":"","officialTextKo":"","pointTitleKo":"","ownerPointKo":"","discussionKo":""}'
         ].join('\n')
       }
     ],
@@ -1136,9 +1141,11 @@ async function callSummarize(env, item, articleText, model) {
   return {
     titleKo: String(parsed.titleKo || '').trim(),
     summaryKo: String(parsed.summaryKo || '').trim(),
+    whyTitleKo: String(parsed.whyTitleKo || '').trim(),
     whyImportantKo: String(parsed.whyImportantKo || '').trim(),
     policyChangeKo: String(parsed.policyChangeKo || '').trim(),
     officialTextKo: String(parsed.officialTextKo || '').trim(),
+    pointTitleKo: String(parsed.pointTitleKo || '').trim(),
     ownerPointKo: String(parsed.ownerPointKo || '').trim(),
     discussionKo: String(parsed.discussionKo || '').trim(),
     usedModel: model
@@ -1175,9 +1182,11 @@ async function summarizeToDraft(env, item) {
     srcDesc: item.description || '',
     titleKo: summary.titleKo,
     summaryKo: summary.summaryKo,
+    whyTitleKo: summary.whyTitleKo,
     whyImportantKo: summary.whyImportantKo,
     policyChangeKo: summary.policyChangeKo,
     officialTextKo: summary.officialTextKo,
+    pointTitleKo: summary.pointTitleKo,
     ownerPointKo: summary.ownerPointKo,
     discussionKo: summary.discussionKo,
     usedModel: summary.usedModel || '',

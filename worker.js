@@ -3,6 +3,8 @@ const DEFAULT_AI_GATEWAY_OPENAI_CHAT_URL = 'https://gateway.ai.cloudflare.com/v1
 const DEFAULT_AI_GATEWAY_ACCOUNT_ID = 'bd0c3fba48bff8f5bec8f88cd625c719';
 const DEFAULT_AI_GATEWAY_ID = 'vnboss-gateway';
 const OPENAI_TIMEOUT_MS = 45000;
+// Bump this on every worker deploy so /api/version confirms what is actually live.
+const WORKER_VERSION = '2026-07-06-news-gpt4o';
 
 // Estimated OpenAI prices (USD per 1M tokens). Edit if OpenAI pricing changes.
 const OPENAI_PRICING = {
@@ -75,6 +77,17 @@ async function handleRequest(request, env) {
 
   if (url.pathname === '/api/member-register' && request.method === 'POST') {
     return handleMemberRegister(request, env);
+  }
+
+  if (url.pathname === '/api/version' && request.method === 'GET') {
+    return jsonResponse({
+      version: WORKER_VERSION,
+      newsSummaryModel: NEWS_SUMMARY_MODEL,
+      newsRankModel: NEWS_RANK_MODEL,
+      articleCharLimit: 9000,
+      hasOpenAiKey: Boolean(env.OPENAI_API_KEY),
+      hasServiceAccount: Boolean(env.FIREBASE_SERVICE_ACCOUNT)
+    }, 200);
   }
 
   if (url.pathname === '/api/news' && request.method === 'GET') {

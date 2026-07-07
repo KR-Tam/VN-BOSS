@@ -418,8 +418,12 @@ async function generateSelected() {
   generateSelectedButton.textContent = `생성 중... (${ids.length}건, 최대 1~2분)`;
   try {
     const result = await adminFetch('/api/admin/news-generate-selected', { method: 'POST', body: JSON.stringify({ ids }) });
-    generateSelectedButton.textContent = `완료: ${result.created || 0}건`;
-    newsCandidatesWrap.innerHTML = '';
+    const models = (result.usedModels && result.usedModels.length) ? ' · 모델 ' + result.usedModels.join(',') : '';
+    generateSelectedButton.textContent = `완료: ${result.created || 0}건${models}`;
+    if ((result.created || 0) === 0 && result.errors && result.errors.length) {
+      alert('생성 실패 원인:\n' + result.errors.slice(0, 3).join('\n'));
+    }
+    if (result.created > 0) newsCandidatesWrap.innerHTML = '';
     await loadNews();
   } catch (error) {
     generateSelectedButton.textContent = '실패: ' + error.message;

@@ -1060,8 +1060,18 @@ function shuffleInPlace(list) {
   return list;
 }
 
+// Try the strong summary model; if it errors (e.g. model not available on the
+// account), fall back to gpt-4o-mini so generation never silently returns 0.
 async function summarizeNewsItem(env, item, articleText) {
-  const model = NEWS_SUMMARY_MODEL;
+  try {
+    return await callSummarize(env, item, articleText, NEWS_SUMMARY_MODEL);
+  } catch (error) {
+    console.error('[VN Boss Worker] summary model failed, falling back to gpt-4o-mini:', error);
+    return await callSummarize(env, item, articleText, 'gpt-4o-mini');
+  }
+}
+
+async function callSummarize(env, item, articleText, model) {
   const gatewayUrl = getOpenAIChatEndpoint(env);
   const payload = {
     model: `openai/${model}`,
@@ -1128,7 +1138,8 @@ async function summarizeNewsItem(env, item, articleText) {
     policyChangeKo: String(parsed.policyChangeKo || '').trim(),
     officialTextKo: String(parsed.officialTextKo || '').trim(),
     ownerPointKo: String(parsed.ownerPointKo || '').trim(),
-    discussionKo: String(parsed.discussionKo || '').trim()
+    discussionKo: String(parsed.discussionKo || '').trim(),
+    usedModel: model
   };
 }
 
@@ -1166,6 +1177,7 @@ async function summarizeToDraft(env, item) {
     officialTextKo: summary.officialTextKo,
     ownerPointKo: summary.ownerPointKo,
     discussionKo: summary.discussionKo,
+    usedModel: summary.usedModel || '',
     createdAt: new Date().toISOString()
   };
 }
@@ -1284,19 +1296,24 @@ async function handleGenerateSelected(env, ids) {
 
   const drafts = [];
   const links = [];
+  const errors = [];
   for (const item of selected) {
     try {
       const draft = await summarizeToDraft(env, item);
       if (draft) {
         drafts.push(draft);
         links.push(item.link);
+      } else {
+        errors.push('요약 결과가 비었습니다: ' + (item.title || '').slice(0, 40));
       }
     } catch (error) {
       console.error('[VN Boss Worker] selected summarize failed:', error);
+      errors.push(String((error && error.message) || error).slice(0, 200));
     }
   }
   await saveDraftsAndSeen(env, drafts, links);
-  return { ok: true, created: drafts.length };
+  const usedModels = Array.from(new Set(drafts.map((d) => d.usedModel).filter(Boolean)));
+  return { ok: true, created: drafts.length, usedModels, errors };
 }
 
 // Legacy random auto-generation (kept for manual "random" button / fallback).

@@ -4,7 +4,7 @@ const DEFAULT_AI_GATEWAY_ACCOUNT_ID = 'bd0c3fba48bff8f5bec8f88cd625c719';
 const DEFAULT_AI_GATEWAY_ID = 'vnboss-gateway';
 const OPENAI_TIMEOUT_MS = 45000;
 // Bump this on every worker deploy so /api/version confirms what is actually live.
-const WORKER_VERSION = '2026-07-06-news-gpt4o';
+const WORKER_VERSION = '2026-07-06-news-gpt4o-fallback';
 
 // Estimated OpenAI prices (USD per 1M tokens). Edit if OpenAI pricing changes.
 const OPENAI_PRICING = {

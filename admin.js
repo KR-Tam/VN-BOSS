@@ -314,6 +314,7 @@ function formatNewsDate(value) {
 function renderNewsCard(item, isDraft) {
   const dateStr = formatNewsDate(item.pubDate || item.publishedAt);
   const meta = `${escapeHtml(item.sourceName)}${dateStr ? ' · ' + dateStr : ''} · <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">원문 링크</a>`;
+  const why = item.whyImportantKo ? `<p class="news-body" style="background:#eef4ff;padding:8px 10px;border-radius:6px;"><strong>🔎 왜 중요한가:</strong> ${escapeHtml(item.whyImportantKo)}</p>` : '';
   const policy = item.policyChangeKo ? `<p class="news-body" style="background:#fff7e8;padding:8px 10px;border-radius:6px;"><strong>📋 정책 전/후:</strong> ${escapeHtml(item.policyChangeKo)}</p>` : '';
   const official = item.officialTextKo ? `<p class="news-body" style="background:#f3f4f6;padding:8px 10px;border-radius:6px;"><strong>📜 법령 원문(비공식 번역):</strong> ${escapeHtml(item.officialTextKo)}</p>` : '';
   const point = item.ownerPointKo ? `<p class="news-point">💡 ${escapeHtml(item.ownerPointKo)}</p>` : '';
@@ -324,6 +325,7 @@ function renderNewsCard(item, isDraft) {
   return `<div class="news-card">
     <h4>${escapeHtml(item.titleKo)}</h4>
     <p class="news-body">${escapeHtml(item.summaryKo)}</p>
+    ${why}
     ${policy}
     ${official}
     ${point}

@@ -196,6 +196,9 @@ label span em{font-style:normal;color:var(--muted);font-weight:700}
 .news-card{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:20px;box-shadow:none;display:flex;flex-direction:column;gap:10px}
 .news-card h3{margin:0;font-size:18px;line-height:1.35}
 .news-card .news-summary{margin:0;color:#2f3b36;font-size:15px;line-height:1.7;white-space:pre-wrap}
+.news-card .news-why{margin:0;padding:12px 14px;border-radius:8px;background:#eef4ff;border:1px solid #cfe0fb}
+.news-card .news-why-title{display:block;margin-bottom:4px;color:#2b5a9e;font-size:13px;font-weight:800}
+.news-card .news-why p{margin:0;color:#26364d;font-size:14px;line-height:1.6;white-space:pre-wrap}
 .news-card .news-policy{margin:0;padding:12px 14px;border-radius:8px;background:#fff7e8;border:1px solid var(--warn-line)}
 .news-card .news-policy-title{display:block;margin-bottom:4px;color:#74511a;font-size:13px;font-weight:800}
 .news-card .news-policy p{margin:0;color:#5c4715;font-size:14px;line-height:1.6;white-space:pre-wrap}

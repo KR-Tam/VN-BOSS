@@ -1041,6 +1041,9 @@ function renderNewsCards(news) {
     return;
   }
   newsGrid.innerHTML = news.map((item) => {
+    const why = item.whyImportantKo
+      ? `<div class="news-why"><span class="news-why-title">🔎 왜 중요한가</span><p>${escapeHtmlText(item.whyImportantKo)}</p></div>`
+      : '';
     const policy = item.policyChangeKo
       ? `<div class="news-policy"><span class="news-policy-title">📋 정책 변경 전/후</span><p>${escapeHtmlText(item.policyChangeKo)}</p></div>`
       : '';
@@ -1048,7 +1051,7 @@ function renderNewsCards(news) {
       ? `<div class="news-official"><span class="news-official-title">📜 관련 법령 원문 (비공식 번역)</span><p>${escapeHtmlText(item.officialTextKo)}</p><span class="news-official-note">※ 비공식 번역으로 법적 효력이 없습니다. 정확한 내용은 원문을 확인하세요.</span></div>`
       : '';
     const point = item.ownerPointKo
-      ? `<div class="news-point"><span class="news-point-title">💡 사장님 대응 포인트</span><p>${escapeHtmlText(item.ownerPointKo)}</p></div>`
+      ? `<div class="news-point"><span class="news-point-title">✅ 체크리스트 · 대응 방안</span><p>${escapeHtmlText(item.ownerPointKo)}</p></div>`
       : '';
     const id = escapeHtmlText(item.id);
     const dateStr = formatNewsDate(item.pubDate || item.publishedAt);
@@ -1058,6 +1061,7 @@ function renderNewsCards(news) {
     return `<article class="news-card" data-news-id="${id}">
       <h3>${escapeHtmlText(item.titleKo)}</h3>
       <p class="news-summary">${escapeHtmlText(item.summaryKo)}</p>
+      ${why}
       ${policy}
       ${official}
       ${point}

@@ -1034,10 +1034,14 @@ if (installConfirmButton) installConfirmButton.addEventListener('click', trigger
 
 maybeShowInstallFab();
 
+// The service worker was found to break cross-origin API fetches (news failed
+// to load) and caused intermittent access issues, so it is intentionally NOT
+// registered anymore. sw.js is now a self-unregistering kill switch that
+// removes any service worker already installed on returning visitors' devices.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((error) => console.error('[VN Boss] SW register failed:', error));
-  });
+  navigator.serviceWorker.getRegistrations()
+    .then((regs) => regs.forEach((reg) => reg.unregister()))
+    .catch(() => {});
 }
 
 function escapeHtmlText(value) {
@@ -1076,7 +1080,7 @@ function getNewsThumbImage(index) {
 
 function getNewsDetailUrl(item) {
   const id = String(item?.id || '').trim();
-  return id ? `/news/${encodeURIComponent(id)}` : '/news';
+  return id ? `/news-detail?id=${encodeURIComponent(id)}` : '/news';
 }
 
 function renderNewsCards(news) {
@@ -1259,13 +1263,19 @@ if (newsGrid) {
 const newsDetailRoot = document.querySelector('#newsDetail');
 
 function getNewsIdFromPath() {
+  // Primary: /news-detail?id=... (query param — reliable across Pages routing).
+  const q = new URLSearchParams(window.location.search).get('id');
+  if (q) return q;
+  // Fallback: /news/{id} path form.
   const parts = window.location.pathname.split('/').filter(Boolean);
-  if (parts[0] !== 'news' || !parts[1]) return '';
-  try {
-    return decodeURIComponent(parts[1]);
-  } catch (error) {
-    return parts[1];
+  if (parts[0] === 'news' && parts[1]) {
+    try {
+      return decodeURIComponent(parts[1]);
+    } catch (error) {
+      return parts[1];
+    }
   }
+  return '';
 }
 
 function setMetaTag(selector, attr, value) {

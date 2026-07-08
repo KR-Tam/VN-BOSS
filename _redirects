@@ -1,1 +1,2 @@
-﻿/news/* /news-detail.html 200
+# News list is served by /news (news/index.html).
+# News detail is served by /news-detail?id=... (query param, no path rewrite).
